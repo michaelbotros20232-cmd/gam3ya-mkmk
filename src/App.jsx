@@ -222,14 +222,32 @@ function LobbyScreen({ roomId, roomData, playerId, onStart }) {
 }
 
 function ChatPanel({ roomId, playerId, myName, messages }) {
+  const list = messages || [];
+  const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const list = messages || [];
+  // بنسجل عدد الرسايل اللي "اتقرت" لحد دلوقتي، عشان نحسب منه عدد الجديد
+  const [readCount, setReadCount] = useState(list.length);
   const bottomRef = React.useRef(null);
 
+  const unread = Math.max(0, list.length - readCount);
+
+  // كل ما رسالة جديدة توصل والشات مفتوح، اعتبرها اتقرت على طول
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [list.length]);
+    if (open) setReadCount(list.length);
+  }, [open, list.length]);
+
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [list.length, open]);
+
+  function toggleOpen() {
+    setOpen((prev) => {
+      const next = !prev;
+      if (next) setReadCount(list.length); // فتحنا الشات = قرينا كل الرسايل
+      return next;
+    });
+  }
 
   async function handleSend() {
     const clean = text.trim();
@@ -251,31 +269,47 @@ function ChatPanel({ roomId, playerId, myName, messages }) {
   }
 
   return (
-    <div className="chat-panel">
-      <div className="chat-messages">
-        {list.length === 0 && <p className="chat-empty">من غير كلام لحد دلوقتي… ابدأ الدردشة 💬</p>}
-        {list.map((m) => (
-          <div key={m.id} className={`chat-msg ${m.playerId === playerId ? 'mine' : ''}`}>
-            <span className="chat-name">{m.name}</span>
-            <span className="chat-text">{m.text}</span>
+    <>
+      <button className="chat-fab" onClick={toggleOpen} aria-label="الشات">
+        💬
+        {unread > 0 && <span className="chat-fab-badge">{unread > 99 ? '99+' : unread}</span>}
+      </button>
+
+      {open && (
+        <div className="chat-float-panel">
+          <div className="chat-float-header">
+            <span>الشات 💬</span>
+            <button className="chat-close-btn" onClick={() => setOpen(false)} aria-label="قفل الشات">
+              ✕
+            </button>
           </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
-      <div className="chat-input-row">
-        <input
-          className="field chat-input"
-          placeholder="اكتب رسالة…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          maxLength={300}
-        />
-        <button className="btn-gold chat-send" disabled={!text.trim() || sending} onClick={handleSend}>
-          ابعت
-        </button>
-      </div>
-    </div>
+          <div className="chat-messages">
+            {list.length === 0 && <p className="chat-empty">من غير كلام لحد دلوقتي… ابدأ الدردشة 💬</p>}
+            {list.map((m) => (
+              <div key={m.id} className={`chat-msg ${m.playerId === playerId ? 'mine' : ''}`}>
+                <span className="chat-name">{m.name}</span>
+                <span className="chat-text">{m.text}</span>
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+          <div className="chat-input-row">
+            <input
+              className="field chat-input"
+              placeholder="اكتب رسالة…"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              maxLength={300}
+              autoFocus
+            />
+            <button className="btn-gold chat-send" disabled={!text.trim() || sending} onClick={handleSend}>
+              ابعت
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
