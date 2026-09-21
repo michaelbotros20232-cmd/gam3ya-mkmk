@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { TYPE_LABEL } from '../cards.js';
 
-export default function Card({ card, selected, onClick, faceDown }) {
+export default function Card({ card, selected, onClick, faceDown, highlight }) {
   // الصورة جاية من cardsData.json (لكل الأنواع، الكوماند كمان)
   const src = card ? card.image : null;
 
@@ -17,10 +17,13 @@ export default function Card({ card, selected, onClick, faceDown }) {
 
   return (
     <div
-      className={`card ${card.type === 'command' ? 'command' : ''} ${selected ? 'selected' : ''} ${imgSrc ? 'has-photo' : ''}`}
+      className={`card ${card.type === 'command' ? 'command' : ''} ${selected ? 'selected' : ''} ${
+        imgSrc ? 'has-photo' : ''
+      } ${highlight ? 'just-drawn' : ''}`}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
     >
+      {highlight && <span className="just-drawn-badge">جديدة 🆕</span>}
       {imgSrc && (
         <img
           className="card-photo"
