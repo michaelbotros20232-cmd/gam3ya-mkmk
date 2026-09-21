@@ -58,7 +58,9 @@ export function initGameState(playerIds, names = {}) {
     turnIndex: 0,
     // مرحلة الدور: 'draw' = لسه هتسحب، 'discard' = سحبت ولازم ترمي ورقة
     phase: 'draw',
-    // جمعية مستنية موافقة: { playerId, cardIds, votes }
+    // آخر كارت اتسحب من كومة "ا" (عشان يتنور قدام اللاعب لحد ما يرمي)
+    lastDrawnCardId: null,
+    // جمعية مستنية موافقة: { playerId, cardIds, votes, name }
     pendingJam3eya: null,
     // اللاعب جرّب جمعية في الدور ده (مرة واحدة بس في الدور)
     jam3eyaTried: false,
@@ -127,6 +129,7 @@ function advanceTurn(state) {
   state.turnIndex = ni;
   state.phase = 'draw';
   state.jam3eyaTried = false;
+  state.lastDrawnCardId = null;
 }
 
 function applyAutoCommand(state, actorId, cardKey) {
@@ -166,10 +169,14 @@ export function drawFromPile(prevState, playerId, source) {
     if (state.discard.length === 0) throw new Error('كومة ب فاضية');
     taken = state.discard.pop();
     state.log.push({ text: `${nm(state, playerId)} سحب "${getCard(taken).name}" من كومة ب` });
+    // الكارت ده كان باين على الطاولة أصلاً، فمفيش داعي ننوره
+    state.lastDrawnCardId = null;
   } else if (source === 'deck') {
     taken = drawFromDeck(state);
     if (taken === undefined) throw new Error('كومة ا خلصت ومفيش ورق يتخلط');
     state.log.push({ text: `${nm(state, playerId)} سحب ورقة من كومة ا` });
+    // كارت أعمى من كومة "ا" — ننوره في إيد اللاعب لحد ما يرمي ورقة
+    state.lastDrawnCardId = taken;
   } else {
     throw new Error('اختار تسحب من أنهي كومة');
   }
@@ -261,8 +268,8 @@ export function discardCardWithTarget(prevState, playerId, cardId, targets) {
 // 3) الجمعية: اقتراح -> تصويت باقي اللاعبين -> تنفيذ أو رفض
 // =========================================================
 
-// اللاعب يختار 3 ورقات (قبل ما يسحب) ويعرضهم على الباقيين
-export function proposeJam3eya(prevState, playerId, threeCardIds) {
+// اللاعب يختار 3 ورقات (قبل ما يسحب) ويعرضهم على الباقيين، مع اسم حر للجمعية
+export function proposeJam3eya(prevState, playerId, threeCardIds, jam3eyaName) {
   const state = structuredCloneState(prevState);
   assertMyTurn(state, playerId);
   if (phaseOf(state) !== 'draw') throw new Error('الجمعية بتتعمل قبل ما تسحب');
@@ -272,10 +279,14 @@ export function proposeJam3eya(prevState, playerId, threeCardIds) {
   const player = state.players[playerId];
   if (!threeCardIds.every((id) => player.hand.includes(id))) throw new Error('لازم الكروت التلاتة تكون في إيدك');
 
-  state.pendingJam3eya = { playerId, cardIds: [...threeCardIds], votes: {} };
+  const cleanName = (jam3eyaName || '').toString().trim().slice(0, 40) || 'جمعية';
+
+  state.pendingJam3eya = { playerId, cardIds: [...threeCardIds], votes: {}, name: cleanName };
   state.jam3eyaTried = true;
-  const names = threeCardIds.map((id) => getCard(id).name).join(' + ');
-  state.log.push({ text: `${nm(state, playerId)} عايز ينزل جمعية: ${names} — مستنيين موافقة الباقيين ⏳` });
+  const cardNames = threeCardIds.map((id) => getCard(id).name).join(' + ');
+  state.log.push({
+    text: `${nm(state, playerId)} عايز ينزل جمعية "${cleanName}": ${cardNames} — مستنيين موافقة الباقيين ⏳`,
+  });
   return state;
 }
 
@@ -316,7 +327,7 @@ export function cancelJam3eya(prevState, playerId) {
 // كله وافق: الـ 3 كروت بتترمي على كومة "ب"، الجمعية بتتحسب، واللاعب يسحب 3 غيرهم
 // وبعدها بيلعب دوره الأساسي (يسحب ورقة من ا أو ب ويرمي ورقة)
 function finalizeJam3eya(state) {
-  const { playerId, cardIds } = state.pendingJam3eya;
+  const { playerId, cardIds, name } = state.pendingJam3eya;
   const player = state.players[playerId];
 
   player.hand = player.hand.filter((id) => !cardIds.includes(id));
@@ -329,7 +340,7 @@ function finalizeJam3eya(state) {
   player.hand.push(...drawn);
   state.discard.push(...cardIds);
 
-  state.log.push({ text: `${nm(state, playerId)} نزّل جمعية! (عدد جمعياته: ${player.jam3eyaCount}) 🎉` });
+  state.log.push({ text: `${nm(state, playerId)} نزّل جمعية "${name}"! (عدد جمعياته: ${player.jam3eyaCount}) 🎉` });
 
   // لو "هاجي معاكو كدا" أو "بس يا بابا" ضمن التلاتة كروت، تفعل تأثيرها كمان
   cardIds.forEach((cid) => {
