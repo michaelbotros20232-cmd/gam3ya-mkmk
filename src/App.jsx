@@ -13,6 +13,7 @@ import {
   actionVoteJam3eya,
   actionCancelJam3eya,
   makeRoomCode,
+  sendMessage,
 } from './room.js';
 
 export default function App() {
@@ -172,6 +173,7 @@ function HomeScreen({ mode, setMode, name, setName, roomCode, setRoomCode, error
 function LobbyScreen({ roomId, roomData, playerId, onStart }) {
   const isHost = roomData.hostId === playerId;
   const players = roomData.playersList;
+  const myName = players.find((p) => p.id === playerId)?.name || '';
   const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
   const [copied, setCopied] = useState(false);
 
@@ -212,6 +214,66 @@ function LobbyScreen({ roomId, roomData, playerId, onStart }) {
             في انتظار المضيف يبدأ اللعبة…
           </p>
         )}
+
+        <ChatPanel roomId={roomId} playerId={playerId} myName={myName} messages={roomData.messages} />
+      </div>
+    </div>
+  );
+}
+
+function ChatPanel({ roomId, playerId, myName, messages }) {
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const list = messages || [];
+  const bottomRef = React.useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [list.length]);
+
+  async function handleSend() {
+    const clean = text.trim();
+    if (!clean || sending) return;
+    setSending(true);
+    setText('');
+    try {
+      await sendMessage(roomId, playerId, myName, clean);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  return (
+    <div className="chat-panel">
+      <div className="chat-messages">
+        {list.length === 0 && <p className="chat-empty">من غير كلام لحد دلوقتي… ابدأ الدردشة 💬</p>}
+        {list.map((m) => (
+          <div key={m.id} className={`chat-msg ${m.playerId === playerId ? 'mine' : ''}`}>
+            <span className="chat-name">{m.name}</span>
+            <span className="chat-text">{m.text}</span>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+      <div className="chat-input-row">
+        <input
+          className="field chat-input"
+          placeholder="اكتب رسالة…"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          maxLength={300}
+        />
+        <button className="btn-gold chat-send" disabled={!text.trim() || sending} onClick={handleSend}>
+          ابعت
+        </button>
       </div>
     </div>
   );
@@ -233,12 +295,16 @@ function GameScreen({ roomId, roomData, playerId }) {
   const [selected, setSelected] = useState([]);
   const [pendingCommand, setPendingCommand] = useState(null); // {cardId, needCount}
   const [pickedTargets, setPickedTargets] = useState([]);
+  const [namingCards, setNamingCards] = useState(null); // الكروت التلاتة وهي مستنية اسم الجمعية
+  const [jamName, setJamName] = useState('');
   const [error, setError] = useState('');
 
   // امسح الاختيار لما الدور أو المرحلة أو حالة الجمعية تتغير
   useEffect(() => {
     setSelected([]);
     setError('');
+    setNamingCards(null);
+    setJamName('');
   }, [game.turnIndex, phase, !!pending]);
 
   if (roomData.status === 'finished') {
@@ -299,7 +365,24 @@ function GameScreen({ roomId, roomData, playerId }) {
 
   async function handleJam3eya() {
     if (selected.length !== 3) return;
-    if (await run(() => actionProposeJam3eya(roomId, playerId, selected))) setSelected([]);
+    setError('');
+    setJamName('');
+    setNamingCards(selected);
+  }
+
+  async function confirmJam3eyaName() {
+    if (!namingCards) return;
+    const ok = await run(() => actionProposeJam3eya(roomId, playerId, namingCards, jamName));
+    if (ok) {
+      setSelected([]);
+      setNamingCards(null);
+      setJamName('');
+    }
+  }
+
+  function cancelJam3eyaName() {
+    setNamingCards(null);
+    setJamName('');
   }
 
   async function confirmTargets() {
@@ -380,7 +463,13 @@ function GameScreen({ roomId, roomData, playerId }) {
       <div className="hand-area">
         <div className="hand-row">
           {me.hand.map((cid) => (
-            <Card key={cid} card={getCard(cid)} selected={selected.includes(cid)} onClick={() => toggleCard(cid)} />
+            <Card
+              key={cid}
+              card={getCard(cid)}
+              selected={selected.includes(cid)}
+              highlight={myTurn && phase === 'discard' && cid === game.lastDrawnCardId}
+              onClick={() => toggleCard(cid)}
+            />
           ))}
         </div>
         <div className="controls">
@@ -413,6 +502,8 @@ function GameScreen({ roomId, roomData, playerId }) {
         ))}
       </div>
 
+      <ChatPanel roomId={roomId} playerId={playerId} myName={nameOf(playerId)} messages={roomData.messages} />
+
       {pendingCommand && (
         <TargetModal
           command={getCard(pendingCommand.cardId)}
@@ -426,6 +517,39 @@ function GameScreen({ roomId, roomData, playerId }) {
           }}
           onConfirm={confirmTargets}
         />
+      )}
+
+      {namingCards && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>اسم الجمعية 🎬</h3>
+            <p className="subtitle" style={{ marginBottom: 14 }}>
+              اكتب اسم للجمعية دي — هيظهر للاعبين التانيين مع الـ 3 كروت
+            </p>
+            <input
+              className="field"
+              placeholder="مثلاً: جمعية الزعيم"
+              value={jamName}
+              onChange={(e) => setJamName(e.target.value)}
+              maxLength={40}
+              autoFocus
+            />
+            <div className="vote-cards">
+              {namingCards.map((cid) => (
+                <Card key={cid} card={getCard(cid)} />
+              ))}
+            </div>
+            {error && <p className="error-text">{error}</p>}
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn-ghost" onClick={cancelJam3eyaName}>
+                إلغاء
+              </button>
+              <button className="btn-gold" onClick={confirmJam3eyaName}>
+                نزّل الجمعية
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {pending && (
@@ -489,11 +613,11 @@ function Jam3eyaVoteModal({ pending, proposerName, isProposer, voters, alreadyVo
   return (
     <div className="modal-backdrop">
       <div className="modal">
-        <h3>{isProposer ? 'جمعيتك مستنية الموافقة' : `جمعية ${proposerName}`}</h3>
+        <h3>{isProposer ? `جمعيتك "${pending.name}" مستنية الموافقة` : `جمعية "${pending.name}" — ${proposerName}`}</h3>
         <p className="subtitle" style={{ marginBottom: 12 }}>
           {isProposer
             ? 'صحابك شايفين الـ 3 ورقات دول دلوقتي. لو الكل وافق الجمعية بتتحسب.'
-            : `${proposerName} عايز ينزل الـ 3 ورقات دول كجمعية. توافق؟`}
+            : `${proposerName} عايز ينزل الـ 3 ورقات دول كجمعية باسم "${pending.name}". توافق؟`}
         </p>
 
         <div className="vote-cards">
