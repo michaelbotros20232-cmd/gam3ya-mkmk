@@ -33,23 +33,39 @@ function endpointFor(type) {
   return null;
 }
 
+async function searchTmdb(endpoint, name, language) {
+  const url =
+    `https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_API_KEY}` +
+    `&query=${encodeURIComponent(name)}` +
+    (language ? `&language=${language}` : '');
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    // بيطبع السبب الحقيقي في الكونسول (401 = المفتاح غلط، 404/غيره = مشكلة تانية)
+    console.error(`[TMDb] "${name}" (${endpoint}) → HTTP ${res.status}`);
+    return null;
+  }
+  const data = await res.json();
+  return data?.results?.[0] || null;
+}
+
 async function fetchTmdbImage(name, type) {
   const endpoint = endpointFor(type);
   if (!endpoint) return null;
 
-  const url =
-    `https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_API_KEY}` +
-    `&language=ar&query=${encodeURIComponent(name)}`;
+  // الاسم من غير أي حاجة بين قوسين (زي "(شيكو)") عشان تزود فرصة المطابقة
+  const cleanName = name.replace(/\s*\([^)]*\)\s*/g, '').trim();
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const result = data?.results?.[0];
+    // أولاً بالعربي، ولو معندوش نتيجة جرب من غير باراميتر اللغة (بعض الأسماء مش متسجلة بالعربي في TMDb)
+    let result = await searchTmdb(endpoint, cleanName, 'ar');
+    if (!result) result = await searchTmdb(endpoint, cleanName, null);
+
     if (!result) return null;
     const path = result.profile_path || result.poster_path;
     return path ? `${TMDB_IMG_BASE}${path}` : null;
-  } catch {
+  } catch (err) {
+    console.error(`[TMDb] فشل الطلب لـ "${name}":`, err);
     return null;
   }
 }
@@ -70,8 +86,10 @@ export default function useCardImage(name, type, enabled) {
       return;
     }
 
+    // بنستخدم الكاش المحفوظ بس لو فيه صورة فعلاً؛ مش بنثبّت "معندوش صورة" للأبد،
+    // عشان لو المفتاح كان متعطل أو فيه مشكلة مؤقتة، أول ما تتصلح هتترفتش تاني بدل ما تفضل فاضية دايمًا
     const cached = readLocalCache(key);
-    if (cached !== undefined) {
+    if (cached) {
       memCache.set(key, cached);
       setSrc(cached);
       return;
@@ -81,7 +99,7 @@ export default function useCardImage(name, type, enabled) {
     fetchTmdbImage(name, type).then((url) => {
       if (cancelled) return;
       memCache.set(key, url);
-      writeLocalCache(key, url);
+      if (url) writeLocalCache(key, url); // نحفظ في localStorage الصور اللي لقيناها بس
       setSrc(url);
     });
 
