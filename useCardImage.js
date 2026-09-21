@@ -16,7 +16,7 @@ function readLocalCache(key) {
     return undefined;
   }
 }
-
+ 
 function writeLocalCache(key, value) {
   try {
     localStorage.setItem(`imgcache:${key}`, JSON.stringify(value));
