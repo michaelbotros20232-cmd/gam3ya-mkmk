@@ -1,0 +1,483 @@
+:root {
+  --maroon-950: #180a0d;
+  --maroon-900: #3a0f18;
+  --maroon-800: #5c1524;
+  --maroon-700: #7c1c2f;
+  --gold: #d4af37;
+  --gold-soft: #e8caa3;
+  --cream: #f3ead4;
+  --ink: #1c1310;
+  --danger: #c94f4f;
+  --ok: #4f9c7e;
+  --font-display: 'Cairo', sans-serif;
+  --font-body: 'Almarai', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background: radial-gradient(circle at 50% -10%, var(--maroon-800), var(--maroon-950) 70%);
+  color: var(--cream);
+  min-height: 100vh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+h1, h2, h3, button {
+  font-family: var(--font-display);
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  font-weight: 700;
+  border-radius: 10px;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-gold {
+  background: linear-gradient(180deg, var(--gold-soft), var(--gold));
+  color: var(--ink);
+  padding: 12px 22px;
+  font-size: 16px;
+  box-shadow: 0 4px 0 #8a6a1f, 0 8px 16px rgba(0, 0, 0, 0.35);
+}
+
+.btn-gold:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--gold-soft);
+  border: 1.5px solid var(--gold-soft);
+  padding: 10px 18px;
+}
+
+.screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.reel-strip {
+  height: 14px;
+  width: 100%;
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--ink) 0 10px,
+    transparent 10px 20px
+  );
+  opacity: 0.5;
+  border-radius: 4px;
+  margin: 14px 0;
+}
+
+.panel {
+  background: rgba(24, 10, 13, 0.6);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 18px;
+  padding: 28px 24px;
+  max-width: 420px;
+  width: 100%;
+  backdrop-filter: blur(6px);
+}
+
+.title {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0 0 4px;
+  color: var(--gold);
+}
+
+.subtitle {
+  color: var(--gold-soft);
+  opacity: 0.8;
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.field {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--cream);
+  font-family: var(--font-body);
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+
+.field:focus {
+  outline: 2px solid var(--gold);
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+.row > * {
+  flex: 1;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.tab {
+  flex: 1;
+  padding: 10px;
+  text-align: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--gold-soft);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.tab.active {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+.error-text {
+  color: var(--danger);
+  font-size: 13px;
+  margin: -4px 0 12px;
+}
+
+/* ------- Lobby ------- */
+.player-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.player-list li {
+  background: rgba(212, 175, 55, 0.1);
+  padding: 10px 14px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.room-code {
+  font-family: var(--font-display);
+  font-size: 34px;
+  letter-spacing: 6px;
+  font-weight: 800;
+  color: var(--gold);
+  text-align: center;
+  margin: 6px 0 4px;
+}
+
+/* ------- Game table ------- */
+.table-wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.opponents {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.player-chip {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 14px;
+  padding: 8px 12px;
+  font-size: 13px;
+  text-align: center;
+  min-width: 84px;
+}
+
+.player-chip.turn {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold) inset, 0 0 14px rgba(212, 175, 55, 0.5);
+}
+
+.player-chip .name {
+  font-weight: 700;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.player-chip .meta {
+  opacity: 0.75;
+  font-size: 11px;
+}
+
+.center-table {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 20px 0;
+}
+
+.pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.pile-label {
+  font-size: 12px;
+  color: var(--gold-soft);
+  opacity: 0.8;
+}
+
+.card {
+  width: 92px;
+  height: 128px;
+  border-radius: 10px;
+  background: linear-gradient(160deg, var(--cream), #e4d3ab);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  position: relative;
+  user-select: none;
+}
+
+.card.command {
+  background: linear-gradient(160deg, var(--maroon-700), var(--maroon-900));
+  color: var(--gold-soft);
+  border-color: var(--gold);
+}
+
+.card.selected {
+  outline: 3px solid var(--gold);
+  transform: translateY(-10px);
+}
+
+.card .kind {
+  font-size: 9px;
+  opacity: 0.7;
+  font-weight: 700;
+}
+
+.card .name {
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.card-back {
+  width: 92px;
+  height: 128px;
+  border-radius: 10px;
+  background: repeating-linear-gradient(45deg, var(--maroon-700), var(--maroon-700) 6px, var(--maroon-800) 6px, var(--maroon-800) 12px);
+  border: 2px solid var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
+}
+
+.deck-count {
+  font-size: 12px;
+  color: var(--gold-soft);
+  margin-top: 4px;
+}
+
+.hand-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.hand-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 2px 10px;
+  scroll-padding: 8px;
+}
+
+.hand-row .card {
+  flex: 0 0 auto;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.turn-banner {
+  text-align: center;
+  font-size: 14px;
+  color: var(--gold-soft);
+  margin-bottom: 4px;
+  min-height: 18px;
+}
+
+.log-panel {
+  max-height: 92px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: rgba(243, 234, 212, 0.7);
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-top: 8px;
+}
+
+.log-panel div + div {
+  margin-top: 3px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 20px;
+}
+
+.modal {
+  background: var(--maroon-900);
+  border: 1px solid var(--gold);
+  border-radius: 16px;
+  padding: 20px;
+  max-width: 360px;
+  width: 100%;
+}
+
+.modal h3 {
+  margin: 0 0 12px;
+  color: var(--gold);
+}
+
+.target-btn {
+  width: 100%;
+  text-align: right;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--cream);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.target-btn.picked {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+.winner-screen {
+  text-align: center;
+}
+
+.winner-screen .title {
+  font-size: 34px;
+}
+
+.copy-hint {
+  font-size: 12px;
+  text-align: center;
+  color: var(--gold-soft);
+  opacity: 0.7;
+  margin-top: 6px;
+}
+
+/* ------- سحب من الكومتين + تصويت الجمعية ------- */
+.pile-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.card-empty {
+  width: 92px;
+  height: 128px;
+  border-radius: 10px;
+  border: 2px dashed rgba(232, 202, 163, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--gold-soft);
+  opacity: 0.7;
+}
+
+.vote-cards {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.vote-cards .card {
+  width: 84px;
+  height: 118px;
+}
+
+.vote-status {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
