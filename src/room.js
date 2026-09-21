@@ -31,6 +31,7 @@ export async function createRoom(roomId, hostName) {
     playersList: [{ id: hostId, name: hostName }],
     game: null,
     createdAt: Date.now(),
+    messages: [],
   });
   return hostId;
 }
@@ -97,9 +98,9 @@ export function actionDiscardWithTarget(roomId, playerId, cardId, targets) {
   return commitGameUpdate(roomId, (game) => discardCardWithTarget(game, playerId, cardId, targets));
 }
 
-// اقتراح جمعية (بيظهر للباقيين عشان يوافقوا أو يرفضوا)
-export function actionProposeJam3eya(roomId, playerId, threeCardIds) {
-  return commitGameUpdate(roomId, (game) => proposeJam3eya(game, playerId, threeCardIds));
+// اقتراح جمعية (بيظهر للباقيين عشان يوافقوا أو يرفضوا) — مع اسم حر للجمعية
+export function actionProposeJam3eya(roomId, playerId, threeCardIds, jam3eyaName) {
+  return commitGameUpdate(roomId, (game) => proposeJam3eya(game, playerId, threeCardIds, jam3eyaName));
 }
 
 export function actionVoteJam3eya(roomId, voterId, approve) {
@@ -108,4 +109,27 @@ export function actionVoteJam3eya(roomId, voterId, approve) {
 
 export function actionCancelJam3eya(roomId, playerId) {
   return commitGameUpdate(roomId, (game) => cancelJam3eya(game, playerId));
+}
+
+// بيبعت رسالة شات جوه الروم — كل رسالة معاها اسم اللاعب اللي بعتها
+const MAX_MESSAGES = 100; // نفضّل نسيب آخر 100 رسالة بس عشان الدوكيومنت متكبرش أوي
+
+export async function sendMessage(roomId, playerId, name, text) {
+  const clean = text.trim();
+  if (!clean) return;
+  const ref = roomRef(roomId);
+  const msg = {
+    id: crypto.randomUUID(),
+    playerId,
+    name,
+    text: clean.slice(0, 300), // حد أقصى لطول الرسالة
+    at: Date.now(),
+  };
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const messages = [...(data.messages || []), msg].slice(-MAX_MESSAGES);
+    tx.update(ref, { messages });
+  });
 }
