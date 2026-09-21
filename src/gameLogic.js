@@ -1,7 +1,7 @@
 import { buildDeck } from './cards.js';
 
 // شرط الفوز: عدد الجمعيات (بيتقرا في room.js)
-export const WIN_JAM3EYAT = 4;
+export const WIN_JAM3EYAT = 10;
 
 // كوماندات محتاجة اختيار لاعب/لاعبين
 export const TARGET_COUNT = {
@@ -43,7 +43,7 @@ export function initGameState(playerIds, names = {}) {
 
   order.forEach((pid) => {
     const hand = deck.splice(0, 5);
-    players[pid] = { hand, jam3eyaCount: 0, laidDown: [] };
+    players[pid] = { hand, jam3eyaCount: 0, laidDown: [], jam3eyaNames: [] };
   });
 
   // ورقة واحدة بس في كومة الرمي (ب) في أول اللعبة
@@ -74,8 +74,17 @@ function structuredCloneState(s) {
   return JSON.parse(JSON.stringify(s));
 }
 
-const nm = (state, id) => state.names?.[id] || id;
+function nm(state, id) {
+  return state.names?.[id] || id;
+}
 const phaseOf = (state) => state.phase ?? 'draw';
+
+// سقف لعدد أسطر اللوج — من غيره المستند بيكبر كل دور وبيبطئ اللعبة مع الوقت
+const MAX_LOG = 40;
+function pushLog(state, text) {
+  state.log.push({ text });
+  if (state.log.length > MAX_LOG) state.log = state.log.slice(-MAX_LOG);
+}
 
 function currentPlayerId(state) {
   return state.order[state.turnIndex];
@@ -91,7 +100,7 @@ function refillIfEmpty(state) {
   if (state.deck.length === 0 && state.discard.length > 0) {
     state.deck = shuffle(state.discard);
     state.discard = [];
-    state.log.push({ text: 'كومة (ا) خلصت — كومة (ب) اتخلطت ورجعت هي كومة (ا)، وكومة (ب) فضيت 🔀' });
+    pushLog(state, 'كومة (ا) خلصت — كومة (ب) اتخلطت ورجعت هي كومة (ا)، وكومة (ب) فضيت 🔀');
   }
 }
 
@@ -122,7 +131,7 @@ function advanceTurn(state) {
   let ni = nextIndex(state, state.turnIndex);
   const nextPid = state.order[ni];
   if (state.skipPlayerId && state.skipPlayerId === nextPid) {
-    state.log.push({ text: `${nm(state, nextPid)} اتعمله سكيب بسبب "بس يا بابا" 🚫` });
+    pushLog(state, `${nm(state, nextPid)} اتعمله سكيب بسبب "بس يا بابا" 🚫`);
     state.skipPlayerId = null;
     ni = nextIndex(state, ni);
   }
@@ -143,12 +152,12 @@ function applyAutoCommand(state, actorId, cardKey) {
       const idx = Math.floor(Math.random() * target.hand.length);
       const [taken] = target.hand.splice(idx, 1);
       state.players[actorId].hand.push(taken);
-      state.log.push({ text: `${nm(state, actorId)} لعب "هاجي معاكو كدا" واخد كارت من ${nm(state, targetId)}` });
+      pushLog(state, `${nm(state, actorId)} لعب "هاجي معاكو كدا" واخد كارت من ${nm(state, targetId)}`);
     }
   } else if (cardKey === 'bas_ya_baba') {
     const targetId = order[nextIndex(state, actorIdx)];
     state.skipPlayerId = targetId;
-    state.log.push({ text: `${nm(state, actorId)} لعب "بس يا بابا"، ${nm(state, targetId)} هيتعمله سكيب` });
+    pushLog(state, `${nm(state, actorId)} لعب "بس يا بابا"، ${nm(state, targetId)} هيتعمله سكيب`);
   }
   // 'badal_ma3a_7ad', 'nafad_wara2ak', 'badal_bein_etnein' محتاجين اختيار لاعب(ين)
   // فبيتنفذوا في discardCardWithTarget
@@ -168,13 +177,13 @@ export function drawFromPile(prevState, playerId, source) {
   if (source === 'discard') {
     if (state.discard.length === 0) throw new Error('كومة ب فاضية');
     taken = state.discard.pop();
-    state.log.push({ text: `${nm(state, playerId)} سحب "${getCard(taken).name}" من كومة ب` });
+    pushLog(state, `${nm(state, playerId)} سحب "${getCard(taken).name}" من كومة ب`);
     // الكارت ده كان باين على الطاولة أصلاً، فمفيش داعي ننوره
     state.lastDrawnCardId = null;
   } else if (source === 'deck') {
     taken = drawFromDeck(state);
     if (taken === undefined) throw new Error('كومة ا خلصت ومفيش ورق يتخلط');
-    state.log.push({ text: `${nm(state, playerId)} سحب ورقة من كومة ا` });
+    pushLog(state, `${nm(state, playerId)} سحب ورقة من كومة ا`);
     // كارت أعمى من كومة "ا" — ننوره في إيد اللاعب لحد ما يرمي ورقة
     state.lastDrawnCardId = taken;
   } else {
@@ -196,7 +205,7 @@ function throwToPileB(state, playerId, cardId) {
   player.hand = player.hand.filter((c) => c !== cardId);
   state.discard.push(cardId);
   const card = getCard(cardId);
-  state.log.push({ text: `${nm(state, playerId)} رمى "${card.name}" على كومة ب` });
+  pushLog(state, `${nm(state, playerId)} رمى "${card.name}" على كومة ب`);
   return card;
 }
 
@@ -243,21 +252,21 @@ export function discardCardWithTarget(prevState, playerId, cardId, targets) {
       player.hand[myIdx] = target.hand[theirIdx];
       target.hand[theirIdx] = myCard;
     }
-    state.log.push({ text: `${nm(state, playerId)} بدل ورقة عمياني مع ${nm(state, targets[0])}` });
+    pushLog(state, `${nm(state, playerId)} بدل ورقة عمياني مع ${nm(state, targets[0])}`);
   } else if (card.key === 'nafad_wara2ak') {
     const target = state.players[targets[0]];
     const oldHand = target.hand;
     // بيسحب الـ 5 الجداد الأول (عشان لو (ا) خلصت ماتتخلطش ورقه القديم معاها)، وبعدين ورقه القديم كله بيترمي على (ب)
     target.hand = drawRandom(state, 5);
     state.discard.push(...oldHand);
-    state.log.push({ text: `${nm(state, playerId)} نفض ورق ${nm(state, targets[0])} — رمى إيده كلها على (ب) وسحب 5 جداد` });
+    pushLog(state, `${nm(state, playerId)} نفض ورق ${nm(state, targets[0])} — رمى إيده كلها على (ب) وسحب 5 جداد`);
   } else if (card.key === 'badal_bein_etnein') {
     const a = state.players[targets[0]];
     const b = state.players[targets[1]];
     const tmp = a.hand;
     a.hand = b.hand;
     b.hand = tmp;
-    state.log.push({ text: `${nm(state, playerId)} بدل إيد ${nm(state, targets[0])} مع إيد ${nm(state, targets[1])} بالكامل` });
+    pushLog(state, `${nm(state, playerId)} بدل إيد ${nm(state, targets[0])} مع إيد ${nm(state, targets[1])} بالكامل`);
   }
 
   advanceTurn(state);
@@ -284,9 +293,10 @@ export function proposeJam3eya(prevState, playerId, threeCardIds, jam3eyaName) {
   state.pendingJam3eya = { playerId, cardIds: [...threeCardIds], votes: {}, name: cleanName };
   state.jam3eyaTried = true;
   const cardNames = threeCardIds.map((id) => getCard(id).name).join(' + ');
-  state.log.push({
-    text: `${nm(state, playerId)} عايز ينزل جمعية "${cleanName}": ${cardNames} — مستنيين موافقة الباقيين ⏳`,
-  });
+  pushLog(
+    state,
+    `${nm(state, playerId)} عايز ينزل جمعية "${cleanName}": ${cardNames} — مستنيين موافقة الباقيين ⏳`
+  );
   return state;
 }
 
@@ -301,9 +311,10 @@ export function voteJam3eya(prevState, voterId, approve) {
 
   if (!approve) {
     state.pendingJam3eya = null;
-    state.log.push({
-      text: `${nm(state, voterId)} رفض جمعية ${nm(state, pend.playerId)} ❌ — مش هتتحسب و${nm(state, pend.playerId)} بيكمل دوره عادي`,
-    });
+    pushLog(
+      state,
+      `${nm(state, voterId)} رفض جمعية ${nm(state, pend.playerId)} ❌ — مش هتتحسب و${nm(state, pend.playerId)} بيكمل دوره عادي`
+    );
     return state; // نفس الدور، phase لسه 'draw'
   }
 
@@ -320,7 +331,7 @@ export function cancelJam3eya(prevState, playerId) {
   if (!pend) throw new Error('مفيش جمعية مستنية');
   if (pend.playerId !== playerId) throw new Error('الجمعية دي مش بتاعتك');
   state.pendingJam3eya = null;
-  state.log.push({ text: `${nm(state, playerId)} لغى الجمعية — بيكمل دوره عادي` });
+  pushLog(state, `${nm(state, playerId)} لغى الجمعية — بيكمل دوره عادي`);
   return state;
 }
 
@@ -333,6 +344,8 @@ function finalizeJam3eya(state) {
   player.hand = player.hand.filter((id) => !cardIds.includes(id));
   player.laidDown.push(...cardIds);
   player.jam3eyaCount += 1;
+  if (!player.jam3eyaNames) player.jam3eyaNames = [];
+  player.jam3eyaNames.push(name);
   state.pendingJam3eya = null;
 
   // بيسحب 3 غيرهم الأول (عشان لو (ا) خلصت ماتتخلطش الـ 3 بتوعه معاها)، وبعدين الـ 3 بيترموا على (ب)
@@ -340,7 +353,7 @@ function finalizeJam3eya(state) {
   player.hand.push(...drawn);
   state.discard.push(...cardIds);
 
-  state.log.push({ text: `${nm(state, playerId)} نزّل جمعية "${name}"! (عدد جمعياته: ${player.jam3eyaCount}) 🎉` });
+  pushLog(state, `${nm(state, playerId)} نزّل جمعية "${name}"! (عدد جمعياته: ${player.jam3eyaCount}) 🎉`);
 
   // لو "هاجي معاكو كدا" أو "بس يا بابا" ضمن التلاتة كروت، تفعل تأثيرها كمان
   cardIds.forEach((cid) => {
