@@ -38,16 +38,27 @@ export async function createRoom(roomId, hostName) {
 
 export async function joinRoom(roomId, name) {
   const ref = roomRef(roomId);
-  const playerId = crypto.randomUUID();
+  let resultId;
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error('الروم دي مش موجودة');
     const data = snap.data();
-    if (data.status !== 'waiting') throw new Error('اللعبة بدأت بالفعل');
+
+    // لو فيه لاعب بنفس الاسم في الروم بالفعل، رجّعه بنفس الـ id بتاعه
+    // عشان يكمل بنفس شخصيته في اللعبة (حتى لو اللعبة بدأت خلاص)
+    const existing = data.playersList.find((p) => p.name === name);
+    if (existing) {
+      resultId = existing.id;
+      return;
+    }
+
+    if (data.status !== 'waiting') throw new Error('اللعبة بدأت بالفعل — مفيش لاعب بالاسم ده جوه الروم');
+    const playerId = crypto.randomUUID();
     const playersList = [...data.playersList, { id: playerId, name }];
     tx.update(ref, { playersList });
+    resultId = playerId;
   });
-  return playerId;
+  return resultId;
 }
 
 export function subscribeRoom(roomId, cb) {
