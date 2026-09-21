@@ -16,19 +16,49 @@ import {
   sendMessage,
 } from './room.js';
 
+// ---- حفظ جلسة اللاعب في المتصفح عشان الريفريش ميطلعوش برا ----
+const SESSION_KEY = 'jam3eya-session';
+
+function saveSession(roomId, playerId, name) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ roomId, playerId, name }));
+  } catch {
+    // تجاهل لو الـ storage مش متاح
+  }
+}
+
+function readSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // تجاهل
+  }
+}
+
 export default function App() {
-  const [screen, setScreen] = useState('home');
+  const savedSession = useMemo(() => readSession(), []);
+  const [screen, setScreen] = useState(savedSession ? 'lobby' : 'home');
   const [mode, setMode] = useState('create');
-  const [name, setName] = useState('');
+  const [name, setName] = useState(savedSession?.name || '');
   const [roomCode, setRoomCode] = useState('');
-  const [roomId, setRoomId] = useState(null);
-  const [playerId, setPlayerId] = useState(null);
+  const [roomId, setRoomId] = useState(savedSession?.roomId || null);
+  const [playerId, setPlayerId] = useState(savedSession?.playerId || null);
   const [roomData, setRoomData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // اقرأ كود الروم من اللينك لو موجود
+  // اقرأ كود الروم من اللينك لو موجود (بس لو مفيش جلسة محفوظة أصلاً)
   useEffect(() => {
+    if (savedSession) return;
     const params = new URLSearchParams(window.location.search);
     const r = params.get('room');
     if (r) {
@@ -40,11 +70,20 @@ export default function App() {
   useEffect(() => {
     if (!roomId) return undefined;
     const unsub = subscribeRoom(roomId, (data) => {
+      // الروم مش موجودة، أو إنت مش من ضمن اللاعبين فيها (الجلسة بقت مش صالحة) — ارجع للصفحة الرئيسية
+      if (!data || (playerId && !data.playersList.some((p) => p.id === playerId))) {
+        clearSession();
+        setRoomData(null);
+        setRoomId(null);
+        setPlayerId(null);
+        setScreen('home');
+        return;
+      }
       setRoomData(data);
-      if (data && data.status !== 'waiting') setScreen('game');
+      if (data.status !== 'waiting') setScreen('game');
     });
     return unsub;
-  }, [roomId]);
+  }, [roomId, playerId]);
 
   async function handleCreate() {
     if (!name.trim()) return setError('اكتب اسمك الأول');
@@ -55,6 +94,7 @@ export default function App() {
       const pid = await createRoom(code, name.trim());
       setRoomId(code);
       setPlayerId(pid);
+      saveSession(code, pid, name.trim());
       setScreen('lobby');
     } catch (e) {
       setError(e.message);
@@ -73,6 +113,7 @@ export default function App() {
       const pid = await joinRoom(code, name.trim());
       setRoomId(code);
       setPlayerId(pid);
+      saveSession(code, pid, name.trim());
       setScreen('lobby');
     } catch (e) {
       setError(e.message);
@@ -313,6 +354,50 @@ function ChatPanel({ roomId, playerId, myName, messages }) {
   );
 }
 
+function Jam3eyatPanel({ players }) {
+  const [open, setOpen] = useState(false);
+  const total = players.reduce((sum, p) => sum + (p.jam3eyaCount || 0), 0);
+
+  return (
+    <>
+      <button className="jam-fab" onClick={() => setOpen((v) => !v)} aria-label="الجمعيات">
+        🏆
+        {total > 0 && <span className="jam-fab-badge">{total > 99 ? '99+' : total}</span>}
+      </button>
+
+      {open && (
+        <div className="jam-float-panel">
+          <div className="chat-float-header">
+            <span>الجمعيات 🏆</span>
+            <button className="chat-close-btn" onClick={() => setOpen(false)} aria-label="قفل الجمعيات">
+              ✕
+            </button>
+          </div>
+          <div className="jam-list">
+            {players.map((p) => (
+              <div key={p.id} className="jam-row">
+                <div className="jam-row-head">
+                  <span className="jam-player-name">🎭 {p.name}</span>
+                  <span className="jam-player-count">{p.jam3eyaCount || 0} جمعية</span>
+                </div>
+                {p.jam3eyaNames && p.jam3eyaNames.length > 0 ? (
+                  <ul className="jam-names">
+                    {p.jam3eyaNames.map((n, i) => (
+                      <li key={i}>🎬 {n}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="jam-empty">لسه ملوش جمعيات</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function GameScreen({ roomId, roomData, playerId }) {
   const game = roomData.game;
   const players = roomData.playersList;
@@ -346,10 +431,20 @@ function GameScreen({ roomId, roomData, playerId }) {
       <div className="screen">
         <div className="panel winner-screen">
           <h1 className="title">🏆 خلصت اللعبة!</h1>
-          <p className="subtitle" style={{ fontSize: 18, color: 'var(--cream)' }}>
-            {nameOf(game.winnerId)} كسب اللعبة بـ {game.players[game.winnerId].jam3eyaCount} جمعيات!
+          <p className="winner-crown">👑</p>
+          <p className="winner-name">{nameOf(game.winnerId)}</p>
+          <p className="winner-tag">هو الفائز 🏆</p>
+          <p className="subtitle" style={{ fontSize: 15, color: 'var(--cream)' }}>
+            كسب اللعبة بـ {game.players[game.winnerId].jam3eyaCount} جمعيات!
           </p>
-          <button className="btn-gold" style={{ width: '100%' }} onClick={() => window.location.reload()}>
+          <button
+            className="btn-gold"
+            style={{ width: '100%' }}
+            onClick={() => {
+              clearSession();
+              window.location.reload();
+            }}
+          >
             لعبة جديدة
           </button>
         </div>
@@ -537,6 +632,7 @@ function GameScreen({ roomId, roomData, playerId }) {
       </div>
 
       <ChatPanel roomId={roomId} playerId={playerId} myName={nameOf(playerId)} messages={roomData.messages} />
+      <Jam3eyatPanel players={game.order.map((id) => ({ id, name: nameOf(id), ...game.players[id] }))} />
 
       {pendingCommand && (
         <TargetModal
