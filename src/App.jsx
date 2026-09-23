@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Card from './components/Card.jsx';
-import { getCard, TARGET_COUNT, WIN_JAM3EYAT } from './gameLogic.js';
+import { getCard, TARGET_COUNT } from './gameLogic.js';
 import { DEFAULT_CATEGORIES } from './listCategories.js';
 import { playDrawSound, playDiscardSound, playJam3eyaSound } from './soundEffects.js';
 import {
@@ -231,9 +231,6 @@ function HomeScreen({
 
         {mode === 'create' && (
           <>
-            <p className="copy-hint" style={{ marginTop: -4, marginBottom: 6, textAlign: 'right' }}>
-              قائمة الجمعيات — دي قائمتك المحفوظة، عدّل فيها هنا لو حابب (للروم دي بس)، أو عدّلها بشكل دائم من src/listCategories.js
-            </p>
             <textarea
               className="field"
               placeholder="اكتب جمعياتك، سطر لكل واحدة (لحد 50)"
@@ -242,9 +239,6 @@ function HomeScreen({
               rows={5}
               style={{ resize: 'vertical', fontFamily: 'var(--font-body)' }}
             />
-            <p className="copy-hint" style={{ marginTop: -6, marginBottom: 12 }}>
-              المضيف بيدوس "ابدأ الجمعيات" في أول اللعبة، وأول واحد يجمع {WIN_JAM3EYAT} جمعيات موافق عليهم يكسب 🏆
-            </p>
           </>
         )}
 
