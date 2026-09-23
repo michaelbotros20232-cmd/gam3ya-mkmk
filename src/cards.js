@@ -1,38 +1,42 @@
-import data from './cardsData.json';
+import React, { useEffect, useState } from 'react';
+import { TYPE_LABEL } from '../cards.js';
 
-// كل كروت اللعبة بتتقرا من cardsData.json
-// الملف ده بيتعمل من أداة review-images.html (إضافة/مسح كروت، عدد نسخ الكوماند، والصور)
-// مفيش بحث ولا طلبات شبكة وقت اللعب.
+export default function Card({ card, selected, onClick, faceDown, highlight, enter }) {
+  // الصورة جاية من cardsData.json (لكل الأنواع، الكوماند كمان)
+  const src = card ? card.image : null;
 
-const names = (arr) => (Array.isArray(arr) ? arr : []).filter((x) => x && x.name);
+  // لو الرابط باظ لأي سبب، نرجع للتصميم النصي بدل صورة مكسورة
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [src]);
+  const imgSrc = broken ? null : src;
 
-export const ACTORS = names(data.actor);
-export const MOVIES = names(data.movie);
-export const SERIES = names(data.series);
-export const COMMANDS = names(data.commands);
+  if (faceDown) {
+    return <div className="card-back">🎞️</div>;
+  }
+  if (!card) return null;
 
-export function buildDeck() {
-  const deck = [];
-  let id = 0;
-  const push = (card) => deck.push({ id: `c${id++}`, ...card });
-
-  [['actor', ACTORS], ['movie', MOVIES], ['series', SERIES]].forEach(([type, list]) => {
-    list.forEach((x) => push({ type, name: x.name, image: x.image || null }));
-  });
-
-  // كل كوماند بييجي منه "count" نسخة (بتتحدد من الأداة)
-  COMMANDS.forEach((cmd) => {
-    const n = Math.max(0, parseInt(cmd.count, 10) || 0);
-    for (let i = 0; i < n; i++) {
-      push({ type: 'command', name: cmd.name, key: cmd.key, desc: cmd.desc || '', image: cmd.image || null });
-    }
-  });
-  return deck;
+  return (
+    <div
+      className={`card ${card.type === 'command' ? 'command' : ''} ${selected ? 'selected' : ''} ${
+        imgSrc ? 'has-photo' : ''
+      } ${highlight ? 'just-drawn' : ''} ${enter ? `card-enter-${enter}` : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+    >
+      {highlight && <span className="just-drawn-badge">جديدة 🆕</span>}
+      {imgSrc && (
+        <img
+          className="card-photo"
+          src={imgSrc}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          referrerPolicy="no-referrer"
+          onError={() => setBroken(true)}
+        />
+      )}
+      <span className="kind">{TYPE_LABEL[card.type]}</span>
+      <span className="name">{card.name}</span>
+    </div>
+  );
 }
-
-export const TYPE_LABEL = {
-  actor: 'ممثل/ممثلة',
-  movie: 'فيلم',
-  series: 'مسلسل',
-  command: 'كوماند',
-};
