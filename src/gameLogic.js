@@ -35,7 +35,7 @@ export function getCard(id) {
 // ---- إعداد اللعبة ----
 // الكومة الأساسية = state.deck   (كومة "ا")
 // كومة الرمي     = state.discard (كومة "ب")، آخر عنصر فيها هو الورقة اللي فوق
-export function initGameState(playerIds, names = {}) {
+export function initGameState(playerIds, names = {}, categories = [], hostId = null) {
   let deckCards = buildDeck();
   // كارت "بدل ورقه بين اتنين" لازم لاعبين غيرك تبدل إيديهم مع بعض — لو الروم فيها لاعبين بس (إنت
   // وواحد تاني)، مفيش لاعب تالت يتبدل معاه، فالكارت ده مالوش لازمة ومش هيدخل الدست أصلاً
@@ -49,7 +49,8 @@ export function initGameState(playerIds, names = {}) {
 
   order.forEach((pid) => {
     const hand = deck.splice(0, 5);
-    players[pid] = { hand, jam3eyaCount: 0, laidDown: [], jam3eyaNames: [] };
+    // currentCategory: الجمعية الي اللاعب شغال عليها دلوقتي (بتتحط أوتوماتيك، مش اسم حر)
+    players[pid] = { hand, jam3eyaCount: 0, laidDown: [], jam3eyaNames: [], currentCategory: null };
   });
 
   // ورقة واحدة بس في كومة الرمي (ب) في أول اللعبة
@@ -73,6 +74,11 @@ export function initGameState(playerIds, names = {}) {
     skipPlayerId: null,
     log: [{ text: 'بدأت اللعبة! يلا بينا 🎬' }],
     winnerId: null,
+    // قايمة الجمعيات (لحد 50) — المضيف بيدوس "ابدأ الجمعيات" فتتحط نفس الجمعية للكل، وبعد كدا كل
+    // لاعب لما يخلص جمعيته بيدوس زراره هو ويطلعله واحدة جديدة (مش مكررة ليه هو تحديدًا)
+    categories: Array.isArray(categories) ? categories.slice(0, 50) : [],
+    categoriesStarted: false,
+    hostId,
   };
 }
 
@@ -275,8 +281,9 @@ export function discardCardWithTarget(prevState, playerId, cardId, targets) {
 // 3) الجمعية: اقتراح -> تصويت باقي اللاعبين -> تنفيذ أو رفض
 // =========================================================
 
-// اللاعب يختار 3 ورقات (قبل ما يسحب) ويعرضهم على الباقيين، مع اسم حر للجمعية
-export function proposeJam3eya(prevState, playerId, threeCardIds, jam3eyaName) {
+// اللاعب يختار 3 ورقات (قبل ما يسحب) ويعرضهم على الباقيين — اسم الجمعية بياخده أوتوماتيك من
+// currentCategory بتاعه (الجمعية الي طلعتله بزرار "هات جمعية")
+export function proposeJam3eya(prevState, playerId, threeCardIds) {
   const state = structuredCloneState(prevState);
   assertMyTurn(state, playerId);
   if (phaseOf(state) !== 'draw') throw new Error('الجمعية بتتعمل قبل ما تسحب');
@@ -285,15 +292,16 @@ export function proposeJam3eya(prevState, playerId, threeCardIds, jam3eyaName) {
 
   const player = state.players[playerId];
   if (!threeCardIds.every((id) => player.hand.includes(id))) throw new Error('لازم الكروت التلاتة تكون في إيدك');
+  if (!player.currentCategory) throw new Error('لازم تطلب جمعية الأول بزرار "هات جمعية"');
 
-  const cleanName = (jam3eyaName || '').toString().trim().slice(0, 40) || 'جمعية';
+  const name = player.currentCategory;
 
-  state.pendingJam3eya = { playerId, cardIds: [...threeCardIds], votes: {}, name: cleanName };
+  state.pendingJam3eya = { playerId, cardIds: [...threeCardIds], votes: {}, name };
   state.jam3eyaTried = true;
   const cardNames = threeCardIds.map((id) => getCard(id).name).join(' + ');
   pushLog(
     state,
-    `${nm(state, playerId)} عايز ينزل جمعية "${cleanName}": ${cardNames} — مستنيين موافقة الباقيين ⏳`
+    `${nm(state, playerId)} عايز ينزل جمعية "${name}": ${cardNames} — مستنيين موافقة الباقيين ⏳`
   );
   return state;
 }
@@ -344,6 +352,8 @@ function finalizeJam3eya(state) {
   player.jam3eyaCount += 1;
   if (!player.jam3eyaNames) player.jam3eyaNames = [];
   player.jam3eyaNames.push(name);
+  // خلصت الجمعية دي — محتاج يدوس زراره هو تاني عشان يجيبله واحدة جديدة
+  player.currentCategory = null;
   state.pendingJam3eya = null;
 
   // بيسحب 3 غيرهم الأول (عشان لو (ا) خلصت ماتتخلطش الـ 3 بتوعه معاها)، وبعدين الـ 3 بيترموا على (ب)
@@ -364,86 +374,48 @@ function finalizeJam3eya(state) {
 }
 
 // =========================================================
-// 4) وضع "جمعيات بالقائمة": مفيش كروت خالص — في قايمة جمعيات
-// (لحد 50)، وكل لاعب بيدوس زرار "هات جمعية" فيطلعله واحدة
-// عشوائية (مش اتكررتلوش قبل كده)، وباقي اللاعبين بيوافقوا
-// أو يرفضوا هل هو فعلاً جمعها صح في الواقع — التحقق ده مش
-// شغلانة الكود، هو شغلانة اللاعبين.
+// 4) الجمعيات (نفس لعبة الكوتشينة، مفيش وضع تاني منفصل):
+// المضيف بيدوس "ابدأ الجمعيات" مرة واحدة بس في أول اللعبة —
+// بتتختار جمعية عشوائية من القايمة (لحد 50) وتتحط لكل
+// اللاعبين. بعد كدا كل لاعب لما يخلص جمعيته (ينزل 3 كروت
+// ويوافق عليهم الباقيين زي الأول بالظبط في finalizeJam3eya)
+// بتتصفر جمعيته الحالية، وهو بيدوس زراره الخاص فيطلعله واحدة
+// جديدة عشوائية (غير مكررة ليه هو تحديدًا). التحقق إن الجمعية
+// صحيحة فعلاً مش شغلانة الكود — بيتم عن طريق تصويت الكروت
+// التلاتة (proposeJam3eya / voteJam3eya) زي الأول بالظبط.
 // =========================================================
 
-export function initListGameState(playerIds, names, categories) {
-  const order = [...playerIds];
-  const players = {};
-  order.forEach((pid) => {
-    players[pid] = { completed: [], jam3eyaCount: 0 };
+// المضيف بيدوس الزرار ده مرة واحدة في الأول — جمعية عشوائية واحدة تتحط لكل اللاعبين
+export function startCategories(prevState, playerId) {
+  const state = structuredCloneState(prevState);
+  if (state.hostId && playerId !== state.hostId) throw new Error('المضيف بس اللي يقدر يبدأ الجمعيات');
+  if (state.categoriesStarted) throw new Error('الجمعيات بدأت خلاص');
+  if (!state.categories || state.categories.length === 0) throw new Error('مفيش جمعيات متاحة');
+
+  const category = state.categories[Math.floor(Math.random() * state.categories.length)];
+  state.order.forEach((pid) => {
+    state.players[pid].currentCategory = category;
   });
-  return {
-    mode: 'list',
-    order,
-    names,
-    categories: [...categories],
-    players,
-    // محاولة مستنية تصويت: { playerId, category, votes }
-    pending: null,
-    log: [{ text: 'بدأت لعبة الجمعيات! دوس "هات جمعية" وابدأ 🎲' }],
-    winnerId: null,
-  };
+  state.categoriesStarted = true;
+  pushLog(state, `الجمعية الأولى للكل: "${category}" 🎲`);
+  return state;
 }
 
-function pickCategoryFor(state, playerId) {
-  const used = new Set(state.players[playerId].completed);
+// كل لاعب بيدوس زراره الخاص لما جمعيته الحالية تتصفر — بتطلعله واحدة جديدة عشوائية
+// (غير مكررة ليه هو شخصيًا في جمعياته اللي جمعها قبل كده)
+export function requestPlayerCategory(prevState, playerId) {
+  const state = structuredCloneState(prevState);
+  const player = state.players[playerId];
+  if (!player) throw new Error('لاعب مش موجود');
+  if (!state.categoriesStarted) throw new Error('لسه المضيف مبدأش الجمعيات');
+  if (player.currentCategory) throw new Error('لسه عندك جمعية شغال عليها');
+
+  const used = new Set(player.jam3eyaNames || []);
   const avail = state.categories.filter((c) => !used.has(c));
-  if (avail.length === 0) throw new Error('اللاعب ده جمع كل الجمعيات المتاحة');
-  return avail[Math.floor(Math.random() * avail.length)];
-}
+  if (avail.length === 0) throw new Error('جمعت كل الجمعيات المتاحة! 🏆');
 
-// اللاعب بيدوس "هات جمعية" فيطلعله واحدة عشوائية (غير مكررة ليه هو تحديدًا)
-export function requestCategory(prevState, playerId) {
-  const state = structuredCloneState(prevState);
-  if (!state.players[playerId]) throw new Error('لاعب مش موجود');
-  if (state.pending) throw new Error('في محاولة مستنية تصويت الباقيين خلاص');
-  if (state.players[playerId].completed.length >= WIN_JAM3EYAT) throw new Error('خلصت خلاص 🏆');
-
-  const category = pickCategoryFor(state, playerId);
-  state.pending = { playerId, category, votes: {} };
-  pushLog(state, `${nm(state, playerId)} طلعله "${category}" 🎲 — مستني موافقة الباقيين`);
-  return state;
-}
-
-// باقي اللاعبين بيوافقوا/يرفضوا إن اللاعب فعلاً جمع حاجة صح في التصنيف ده
-export function voteCategory(prevState, voterId, approve) {
-  const state = structuredCloneState(prevState);
-  const pend = state.pending;
-  if (!pend) throw new Error('مفيش محاولة مستنية تصويت');
-  if (!state.players[voterId]) throw new Error('لاعب مش موجود');
-  if (voterId === pend.playerId) throw new Error('مينفعش تصوّت على جمعيتك انت');
-  if (pend.votes[voterId] !== undefined) throw new Error('انت صوّت خلاص');
-
-  if (!approve) {
-    state.pending = null;
-    pushLog(state, `${nm(state, voterId)} رفض "${pend.category}" ❌ — ${nm(state, pend.playerId)} يقدر يجرب تاني`);
-    return state;
-  }
-
-  pend.votes[voterId] = true;
-  const voters = state.order.filter((id) => id !== pend.playerId);
-  if (voters.every((id) => pend.votes[id])) {
-    const player = state.players[pend.playerId];
-    player.completed.push(pend.category);
-    player.jam3eyaCount = player.completed.length;
-    pushLog(state, `${nm(state, pend.playerId)} جمع "${pend.category}"! (${player.jam3eyaCount}/${WIN_JAM3EYAT}) 🎉`);
-    state.pending = null;
-  }
-  return state;
-}
-
-// صاحب المحاولة يلغيها قبل ما التصويت يخلص
-export function cancelCategory(prevState, playerId) {
-  const state = structuredCloneState(prevState);
-  const pend = state.pending;
-  if (!pend) throw new Error('مفيش محاولة مستنية');
-  if (pend.playerId !== playerId) throw new Error('المحاولة دي مش بتاعتك');
-  state.pending = null;
-  pushLog(state, `${nm(state, playerId)} لغى المحاولة`);
+  const category = avail[Math.floor(Math.random() * avail.length)];
+  player.currentCategory = category;
+  pushLog(state, `${nm(state, playerId)} طلعله جمعية جديدة: "${category}" 🎲`);
   return state;
 }
