@@ -356,3 +356,88 @@ function finalizeJam3eya(state) {
   // مفيش advanceTurn: الدور لسه بتاعه، phase لسه 'draw'
   return state;
 }
+
+// =========================================================
+// 4) وضع "جمعيات بالقائمة": مفيش كروت خالص — في قايمة جمعيات
+// (لحد 50)، وكل لاعب بيدوس زرار "هات جمعية" فيطلعله واحدة
+// عشوائية (مش اتكررتلوش قبل كده)، وباقي اللاعبين بيوافقوا
+// أو يرفضوا هل هو فعلاً جمعها صح في الواقع — التحقق ده مش
+// شغلانة الكود، هو شغلانة اللاعبين.
+// =========================================================
+
+export function initListGameState(playerIds, names, categories) {
+  const order = [...playerIds];
+  const players = {};
+  order.forEach((pid) => {
+    players[pid] = { completed: [], jam3eyaCount: 0 };
+  });
+  return {
+    mode: 'list',
+    order,
+    names,
+    categories: [...categories],
+    players,
+    // محاولة مستنية تصويت: { playerId, category, votes }
+    pending: null,
+    log: [{ text: 'بدأت لعبة الجمعيات! دوس "هات جمعية" وابدأ 🎲' }],
+    winnerId: null,
+  };
+}
+
+function pickCategoryFor(state, playerId) {
+  const used = new Set(state.players[playerId].completed);
+  const avail = state.categories.filter((c) => !used.has(c));
+  if (avail.length === 0) throw new Error('اللاعب ده جمع كل الجمعيات المتاحة');
+  return avail[Math.floor(Math.random() * avail.length)];
+}
+
+// اللاعب بيدوس "هات جمعية" فيطلعله واحدة عشوائية (غير مكررة ليه هو تحديدًا)
+export function requestCategory(prevState, playerId) {
+  const state = structuredCloneState(prevState);
+  if (!state.players[playerId]) throw new Error('لاعب مش موجود');
+  if (state.pending) throw new Error('في محاولة مستنية تصويت الباقيين خلاص');
+  if (state.players[playerId].completed.length >= WIN_JAM3EYAT) throw new Error('خلصت خلاص 🏆');
+
+  const category = pickCategoryFor(state, playerId);
+  state.pending = { playerId, category, votes: {} };
+  pushLog(state, `${nm(state, playerId)} طلعله "${category}" 🎲 — مستني موافقة الباقيين`);
+  return state;
+}
+
+// باقي اللاعبين بيوافقوا/يرفضوا إن اللاعب فعلاً جمع حاجة صح في التصنيف ده
+export function voteCategory(prevState, voterId, approve) {
+  const state = structuredCloneState(prevState);
+  const pend = state.pending;
+  if (!pend) throw new Error('مفيش محاولة مستنية تصويت');
+  if (!state.players[voterId]) throw new Error('لاعب مش موجود');
+  if (voterId === pend.playerId) throw new Error('مينفعش تصوّت على جمعيتك انت');
+  if (pend.votes[voterId] !== undefined) throw new Error('انت صوّت خلاص');
+
+  if (!approve) {
+    state.pending = null;
+    pushLog(state, `${nm(state, voterId)} رفض "${pend.category}" ❌ — ${nm(state, pend.playerId)} يقدر يجرب تاني`);
+    return state;
+  }
+
+  pend.votes[voterId] = true;
+  const voters = state.order.filter((id) => id !== pend.playerId);
+  if (voters.every((id) => pend.votes[id])) {
+    const player = state.players[pend.playerId];
+    player.completed.push(pend.category);
+    player.jam3eyaCount = player.completed.length;
+    pushLog(state, `${nm(state, pend.playerId)} جمع "${pend.category}"! (${player.jam3eyaCount}/${WIN_JAM3EYAT}) 🎉`);
+    state.pending = null;
+  }
+  return state;
+}
+
+// صاحب المحاولة يلغيها قبل ما التصويت يخلص
+export function cancelCategory(prevState, playerId) {
+  const state = structuredCloneState(prevState);
+  const pend = state.pending;
+  if (!pend) throw new Error('مفيش محاولة مستنية');
+  if (pend.playerId !== playerId) throw new Error('المحاولة دي مش بتاعتك');
+  state.pending = null;
+  pushLog(state, `${nm(state, playerId)} لغى المحاولة`);
+  return state;
+}
