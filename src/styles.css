@@ -257,6 +257,15 @@ button:disabled {
   font-size: 11px;
 }
 
+.player-chip.me {
+  border-color: rgba(212, 175, 55, 0.6);
+  background: rgba(212, 175, 55, 0.14);
+}
+
+.player-chip.me .name {
+  color: var(--gold, #d4af37);
+}
+
 .center-table {
   flex: 1;
   display: flex;
@@ -277,6 +286,23 @@ button:disabled {
   font-size: 12px;
   color: var(--gold-soft);
   opacity: 0.8;
+}
+
+/* لمضة خفيفة على الكومة لحظة سحب ورقة منها — إحساس إن ورقة "طارت" من فوقها */
+.pile-pulse {
+  animation: pile-pulse 0.28s ease-out;
+}
+
+@keyframes pile-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.88) translateY(5px);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .card {
@@ -332,6 +358,52 @@ button:disabled {
   }
   to {
     box-shadow: 0 0 0 6px rgba(255, 215, 106, 0.35), 0 0 22px 6px rgba(255, 215, 106, 0.85);
+  }
+}
+
+/* انيميشن سحب ورقة — الكارت بيطير جاي من مكان الكومة لإيد اللاعب وبيستقر بـ"طقة" خفيفة */
+.card-enter-deal {
+  animation: card-deal-in 0.45s cubic-bezier(0.22, 0.85, 0.3, 1.2) both;
+}
+
+@keyframes card-deal-in {
+  0% {
+    opacity: 0;
+    transform: translate(46px, -130px) rotate(-24deg) scale(0.7);
+  }
+  55% {
+    opacity: 1;
+    transform: translate(-4px, 6px) rotate(5deg) scale(1.05);
+  }
+  80% {
+    transform: translate(1px, -2px) rotate(-1.5deg) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+}
+
+/* انيميشن رمي ورقة — الكارت بيطير من إيد اللاعب وبيقع لف على كومة الرمي */
+.card-enter-throw {
+  animation: card-throw-in 0.4s cubic-bezier(0.22, 0.85, 0.3, 1.2) both;
+}
+
+@keyframes card-throw-in {
+  0% {
+    opacity: 0;
+    transform: translate(-38px, -76px) rotate(-34deg) scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(6px, 8px) rotate(11deg) scale(1.06);
+  }
+  75% {
+    transform: translate(-2px, -3px) rotate(-3deg) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
   }
 }
 
