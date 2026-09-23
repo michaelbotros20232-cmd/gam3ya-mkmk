@@ -209,7 +209,9 @@ button:disabled {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  /* بادينج فوق كافي عشان محتوى الـ top-bar (زرار الخروج وكروت اللاعبين) ميوقعش تحت أيقونات
+     الشات/الجمعيات العايمة (chat-fab / jam-fab) اللي مثبتة فوق يمين الشاشة */
+  padding: 66px 12px calc(12px + env(safe-area-inset-bottom, 0px));
 }
 
 .top-bar {
@@ -818,7 +820,7 @@ button:disabled {
 .exit-btn-inline {
   position: absolute;
   top: 16px;
-  left: 16px;
+  right: 16px;
 }
 
 .panel {
