@@ -36,7 +36,13 @@ export function getCard(id) {
 // الكومة الأساسية = state.deck   (كومة "ا")
 // كومة الرمي     = state.discard (كومة "ب")، آخر عنصر فيها هو الورقة اللي فوق
 export function initGameState(playerIds, names = {}) {
-  const fullDeck = shuffle(buildDeck().map((c) => c.id));
+  let deckCards = buildDeck();
+  // كارت "بدل ورقه بين اتنين" لازم لاعبين غيرك تبدل إيديهم مع بعض — لو الروم فيها لاعبين بس (إنت
+  // وواحد تاني)، مفيش لاعب تالت يتبدل معاه، فالكارت ده مالوش لازمة ومش هيدخل الدست أصلاً
+  if (playerIds.length <= 2) {
+    deckCards = deckCards.filter((c) => c.key !== 'badal_bein_etnein');
+  }
+  const fullDeck = shuffle(deckCards.map((c) => c.id));
   const players = {};
   const order = [...playerIds];
   const deck = [...fullDeck];
