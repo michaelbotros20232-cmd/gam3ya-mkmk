@@ -232,7 +232,9 @@ export function discardCard(prevState, playerId, cardId) {
 }
 
 // كوماندات محتاجة هدف: بدل مع حد / نفض ورق حد / بدل بين اتنين
-export function discardCardWithTarget(prevState, playerId, cardId, targets) {
+// myCardId: لازمة بس لكارت "بدل ورقك مع حد" — الورقة اللي اللاعب نفسه مختارها من إيده يبدلها
+// (اختيار مش عشوائي)، بعكس ورقة اللاعب التاني اللي بتتاخد عشوائي زي الأول
+export function discardCardWithTarget(prevState, playerId, cardId, targets, myCardId) {
   const state = structuredCloneState(prevState);
   assertMyTurn(state, playerId);
   if (phaseOf(state) !== 'discard') throw new Error('اسحب ورقة الأول');
@@ -244,19 +246,30 @@ export function discardCardWithTarget(prevState, playerId, cardId, targets) {
   if (new Set(targets).size !== targets.length) throw new Error('مينفعش تختار نفس اللاعب مرتين');
   if (!targets.every((t) => t !== playerId && state.players[t])) throw new Error('اختيار لاعب مش صح');
 
+  if (card.key === 'badal_ma3a_7ad') {
+    if (!myCardId) throw new Error('اختار ورقة من إيدك تبدلها');
+    if (myCardId === cardId) throw new Error('اختار ورقة مختلفة عن الكارت اللي بترميه');
+    if (!state.players[playerId].hand.includes(myCardId)) throw new Error('الورقة دي مش في إيدك');
+  }
+
   throwToPileB(state, playerId, cardId);
   const player = state.players[playerId];
 
   if (card.key === 'badal_ma3a_7ad') {
     const target = state.players[targets[0]];
-    if (player.hand.length && target.hand.length) {
-      const myIdx = Math.floor(Math.random() * player.hand.length);
+    if (target.hand.length) {
+      const myIdx = player.hand.indexOf(myCardId);
       const theirIdx = Math.floor(Math.random() * target.hand.length);
       const myCard = player.hand[myIdx];
       player.hand[myIdx] = target.hand[theirIdx];
       target.hand[theirIdx] = myCard;
+      pushLog(
+        state,
+        `${nm(state, playerId)} بدل "${getCard(myCard).name}" بورقة عمياني من إيد ${nm(state, targets[0])}`
+      );
+    } else {
+      pushLog(state, `${nm(state, playerId)} حاول يبدل مع ${nm(state, targets[0])} بس إيده كانت فاضية`);
     }
-    pushLog(state, `${nm(state, playerId)} بدل ورقة عمياني مع ${nm(state, targets[0])}`);
   } else if (card.key === 'nafad_wara2ak') {
     const target = state.players[targets[0]];
     const oldHand = target.hand;
