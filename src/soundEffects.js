@@ -1,5 +1,9 @@
 // أصوات اللعبة — متولّدة برمجيًا بـ Web Audio API (مفيش ملفات صوت خارجية،
 // فمش محتاجين نت أو أصول إضافية، والحجم فاضل صغير).
+//
+// كل صوت بقى متكوّن من أكتر من "طبقة" فوق بعض (زي صوت حقيقي بيتسجل من مصادر
+// مختلفة: احتكاك الورق + طقة التلامس) بدل نغمة واحدة مسطحة، ومع شوية عشوائية
+// بسيطة في كل مرة عشان الصوت ميبقاش مكرر وروبوتي.
 
 let ctx = null;
 function getCtx() {
@@ -23,52 +27,94 @@ function getNoiseBuffer(audioCtx) {
   return buffer;
 }
 
-// صوت "فرقعة ورقة" قصير — النويز بيتفلتر عشان يحس إنه ورق مش شوشرة عشوائية
-function playCardFlick({ duration = 0.12, filterFreq = 2500, filterQ = 0.8, gain = 0.3, filterType = 'bandpass' } = {}) {
+function rand(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+// طبقة "خشخشة ورق" مفلترة — ده حجر الأساس لأي صوت ورق واقعي، وبنركّب منها أكتر
+// من طبقة فوق بعض بترددات وتوقيتات مختلفة عشان يحس السامع إنه صوت "مادة" حقيقية
+// مش صفارة إلكترونية.
+function noiseLayer(audioCtx, { start = 0, duration = 0.1, filterType = 'bandpass', freq = 2500, freqEnd = null, Q = 1, gain = 0.3 } = {}) {
+  const source = audioCtx.createBufferSource();
+  source.buffer = getNoiseBuffer(audioCtx);
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = filterType;
+  const t0 = audioCtx.currentTime + start;
+  filter.frequency.setValueAtTime(freq, t0);
+  if (freqEnd) filter.frequency.exponentialRampToValueAtTime(freqEnd, t0 + duration);
+  filter.Q.value = Q;
+
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0, t0);
+  gainNode.gain.linearRampToValueAtTime(gain, t0 + Math.min(0.008, duration * 0.25));
+  gainNode.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+
+  source.connect(filter);
+  filter.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+
+  source.start(t0);
+  source.stop(t0 + duration + 0.02);
+}
+
+// "طقة" جسدية خفيفة — سينوسويد قصير بيهبط بسرعة، بيدي إحساس وزن الورقة وهي
+// بتلمس الكومة أو الطاولة (مش موجودة في نويز عادي، وده اللي بيخلي الصوت حقيقي).
+function thump(audioCtx, { start = 0, duration = 0.05, freq = 130, freqEnd = 60, gain = 0.18 } = {}) {
+  const osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  const t0 = audioCtx.currentTime + start;
+  osc.frequency.setValueAtTime(freq, t0);
+  osc.frequency.exponentialRampToValueAtTime(freqEnd, t0 + duration);
+
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(gain, t0);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+
+  osc.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + duration + 0.02);
+}
+
+// سحب ورقة — "شيك" حاد لحظة الفصل من فوق الكومة + ذيل قصير من احتكاك الورق
+// وهو بيتزحلق برّه، زي لما تسحب كارت من إيدك فعلاً
+export function playDrawSound() {
   const audioCtx = getCtx();
   if (!audioCtx) return;
   try {
-    const source = audioCtx.createBufferSource();
-    source.buffer = getNoiseBuffer(audioCtx);
-
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = filterType;
-    filter.frequency.value = filterFreq;
-    filter.Q.value = filterQ;
-
-    const gainNode = audioCtx.createGain();
-    const now = audioCtx.currentTime;
-    gainNode.gain.setValueAtTime(gain, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-    source.connect(filter);
-    filter.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-
-    source.start(now);
-    source.stop(now + duration + 0.02);
+    const j = rand(0.92, 1.08);
+    noiseLayer(audioCtx, { start: 0, duration: 0.045, filterType: 'highpass', freq: 3900 * j, Q: 0.7, gain: 0.32 });
+    noiseLayer(audioCtx, { start: 0.012, duration: 0.09, filterType: 'bandpass', freq: 2300 * j, freqEnd: 1300, Q: 1.1, gain: 0.16 });
   } catch {
     // تجاهل لو المتصفح رفض يشغل صوت (زي أول تحميل من غير تفاعل من اليوزر)
   }
 }
 
-// سحب ورقة — صوت "شيك" سريع وحاد
-export function playDrawSound() {
-  playCardFlick({ duration: 0.08, filterFreq: 3400, filterQ: 0.6, gain: 0.28, filterType: 'highpass' });
-}
-
-// رمي ورقة — صوت أوسع وأخفض شوية زي "فرقعة" الورقة وهي بتقع
+// رمي ورقة — فرقعة الورقة وهي طايرة في الهوا، بعدها طقة وقوعها على الكومة
+// (نويز حاد + طقة جسدية خفيفة) عشان يحس إن للورقة وزن فعلاً
 export function playDiscardSound() {
-  playCardFlick({ duration: 0.16, filterFreq: 1500, filterQ: 1, gain: 0.34, filterType: 'bandpass' });
-}
-
-// جمعية اتحسبت — نغمة احتفال قصيرة فوق صوت ورق
-export function playJam3eyaSound() {
-  playCardFlick({ duration: 0.12, filterFreq: 2200, filterQ: 0.8, gain: 0.22, filterType: 'bandpass' });
-
   const audioCtx = getCtx();
   if (!audioCtx) return;
   try {
+    const j = rand(0.9, 1.1);
+    noiseLayer(audioCtx, { start: 0, duration: 0.07, filterType: 'bandpass', freq: 2600 * j, freqEnd: 1150, Q: 0.9, gain: 0.26 });
+    noiseLayer(audioCtx, { start: 0.065, duration: 0.1, filterType: 'bandpass', freq: 1400 * j, Q: 1.3, gain: 0.3 });
+    thump(audioCtx, { start: 0.065, duration: 0.06, freq: 145 * j, freqEnd: 55, gain: 0.16 });
+  } catch {
+    // تجاهل
+  }
+}
+
+// جمعية اتحسبت — نغمة احتفال قصيرة فوق صوت ورق واقعي
+export function playJam3eyaSound() {
+  const audioCtx = getCtx();
+  if (!audioCtx) return;
+  try {
+    const j = rand(0.95, 1.05);
+    noiseLayer(audioCtx, { start: 0, duration: 0.05, filterType: 'highpass', freq: 3600 * j, Q: 0.7, gain: 0.3 });
+    noiseLayer(audioCtx, { start: 0.01, duration: 0.1, filterType: 'bandpass', freq: 2100 * j, freqEnd: 1300, Q: 0.9, gain: 0.18 });
+
     const now = audioCtx.currentTime;
     const freqs = [523.25, 659.25, 783.99]; // دو - مي - صول (نغمة صاعدة مبهجة)
     freqs.forEach((freq, i) => {
@@ -76,7 +122,7 @@ export function playJam3eyaSound() {
       const gainNode = audioCtx.createGain();
       osc.type = 'triangle';
       osc.frequency.value = freq;
-      const start = now + i * 0.09;
+      const start = now + 0.05 + i * 0.09;
       gainNode.gain.setValueAtTime(0, start);
       gainNode.gain.linearRampToValueAtTime(0.22, start + 0.02);
       gainNode.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
