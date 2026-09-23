@@ -476,6 +476,8 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
   const [error, setError] = useState('');
   // بانل الشات والجمعيات بيتفتحوا واحد لوحده بس — عشان محدش يتراكب فوق التاني
   const [activePanel, setActivePanel] = useState(null); // null | 'chat' | 'jam'
+  // لمضة بصرية لحظة سحب ورقة من إحدى الكومتين
+  const [pileFlash, setPileFlash] = useState(null); // 'deck' | 'discard' | null
 
   // امسح الاختيار لما الدور أو المرحلة أو حالة الجمعية تتغير
   useEffect(() => {
@@ -495,13 +497,10 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
     return (
       <div className="screen">
         <div className="panel winner-screen">
-          <h1 className="title">🏆 خلصت اللعبة!</h1>
+          <h1 className="title">🏆 كينج اللعبة</h1>
           <p className="winner-crown">👑</p>
           <p className="winner-name">{nameOf(game.winnerId)}</p>
-          <p className="winner-tag">هو الفائز 🏆</p>
-          <p className="subtitle" style={{ fontSize: 15, color: 'var(--cream)' }}>
-            كسب اللعبة بـ {game.players[game.winnerId].jam3eyaCount} جمعيات!
-          </p>
+          <p className="winner-tag">THE WINNER 🏆</p>
           <button
             className="btn-gold"
             style={{ width: '100%' }}
@@ -542,6 +541,8 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
 
   function handleDrawPile(source) {
     playDrawSound();
+    setPileFlash(source);
+    setTimeout(() => setPileFlash((cur) => (cur === source ? null : cur)), 280);
     return run(() => actionDrawPile(roomId, playerId, source));
   }
 
@@ -611,12 +612,13 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
           ✕ خروج
         </button>
         <div className="opponents">
-          {opponents.map((id) => {
+          {game.order.map((id) => {
             const p = game.players[id];
             const isTurn = currentId === id;
+            const isMe = id === playerId;
             return (
-              <div key={id} className={`player-chip ${isTurn ? 'turn' : ''}`}>
-                <span className="name">{nameOf(id)}</span>
+              <div key={id} className={`player-chip ${isTurn ? 'turn' : ''} ${isMe ? 'me' : ''}`}>
+                <span className="name">{isMe ? '👤 أنت' : nameOf(id)}</span>
                 <span className="meta">
                   🃏 {p.hand.length} · 🏅 {p.jam3eyaCount}
                 </span>
@@ -646,14 +648,20 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
       <div className="center-table">
         <div className="pile">
           <span className="pile-label">الكومة الأساسية (ا) · {game.deck.length}</span>
-          <Card faceDown />
+          <div className={pileFlash === 'deck' ? 'pile-pulse' : ''}>
+            <Card faceDown />
+          </div>
           <button className="btn-gold pile-btn" disabled={!canPickPile} onClick={() => handleDrawPile('deck')}>
             اسحب من (ا)
           </button>
         </div>
         <div className="pile">
           <span className="pile-label">كومة الرمي (ب) · {game.discard.length}</span>
-          {topDiscard ? <Card card={topDiscard} /> : <div className="card-empty">فاضية</div>}
+          {topDiscard ? (
+            <Card key={topDiscardId} card={topDiscard} enter="throw" />
+          ) : (
+            <div className={`card-empty ${pileFlash === 'discard' ? 'pile-pulse' : ''}`}>فاضية</div>
+          )}
           <button
             className="btn-gold pile-btn"
             disabled={!canPickPile || game.discard.length === 0}
@@ -668,15 +676,19 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
 
       <div className="hand-area">
         <div className="hand-row">
-          {me.hand.map((cid) => (
-            <Card
-              key={cid}
-              card={getCard(cid)}
-              selected={selected.includes(cid)}
-              highlight={myTurn && phase === 'discard' && cid === game.lastDrawnCardId}
-              onClick={() => toggleCard(cid)}
-            />
-          ))}
+          {me.hand.map((cid) => {
+            const justDrawn = myTurn && phase === 'discard' && cid === game.lastDrawnCardId;
+            return (
+              <Card
+                key={cid}
+                card={getCard(cid)}
+                selected={selected.includes(cid)}
+                highlight={justDrawn}
+                enter={justDrawn ? 'deal' : undefined}
+                onClick={() => toggleCard(cid)}
+              />
+            );
+          })}
         </div>
         <div className="controls">
           <button
