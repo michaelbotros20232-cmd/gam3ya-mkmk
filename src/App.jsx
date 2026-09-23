@@ -267,15 +267,16 @@ function ChatPanel({ roomId, playerId, myName, messages }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  // بنسجل عدد الرسايل اللي "اتقرت" لحد دلوقتي، عشان نحسب منه عدد الجديد
-  const [readCount, setReadCount] = useState(list.length);
+  // بنتتبع "وقت" آخر رسالة اتقرت (مش عدد الرسايل)، عشان القايمة بتتقص لآخر 100
+  // رسالة بس (MAX_MESSAGES في room.js)، فالاعتماد على العدد بيبوظ بعد ما الرسايل تعدي 100
+  const [lastReadAt, setLastReadAt] = useState(() => (list.length ? list[list.length - 1].at : 0));
   const bottomRef = React.useRef(null);
 
-  const unread = Math.max(0, list.length - readCount);
+  const unread = list.filter((m) => m.playerId !== playerId && m.at > lastReadAt).length;
 
   // كل ما رسالة جديدة توصل والشات مفتوح، اعتبرها اتقرت على طول
   useEffect(() => {
-    if (open) setReadCount(list.length);
+    if (open && list.length) setLastReadAt(list[list.length - 1].at);
   }, [open, list.length]);
 
   useEffect(() => {
@@ -283,11 +284,8 @@ function ChatPanel({ roomId, playerId, myName, messages }) {
   }, [list.length, open]);
 
   function toggleOpen() {
-    setOpen((prev) => {
-      const next = !prev;
-      if (next) setReadCount(list.length); // فتحنا الشات = قرينا كل الرسايل
-      return next;
-    });
+    if (!open && list.length) setLastReadAt(list[list.length - 1].at); // فتحنا الشات = قرينا كل الرسايل
+    setOpen((prev) => !prev);
   }
 
   async function handleSend() {
