@@ -801,6 +801,30 @@ button:disabled {
   height: 118px;
 }
 
+/* ------- زرار الخروج ------- */
+.exit-btn {
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--gold-soft);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+.exit-btn:hover {
+  filter: brightness(1.1);
+}
+
+.exit-btn-inline {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+}
+
+.panel {
+  position: relative;
+}
+
 .vote-status {
   list-style: none;
   padding: 0;
