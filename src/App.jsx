@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Card from './components/Card.jsx';
-import { getCard, TARGET_COUNT } from './gameLogic.js';
+import { getCard, TARGET_COUNT, WIN_JAM3EYAT } from './gameLogic.js';
+import { DEFAULT_CATEGORIES } from './listCategories.js';
+import { playDrawSound, playDiscardSound, playJam3eyaSound } from './soundEffects.js';
 import {
   createRoom,
   joinRoom,
@@ -12,6 +14,9 @@ import {
   actionProposeJam3eya,
   actionVoteJam3eya,
   actionCancelJam3eya,
+  actionRequestCategory,
+  actionVoteCategory,
+  actionCancelCategory,
   makeRoomCode,
   sendMessage,
 } from './room.js';
@@ -48,6 +53,10 @@ export default function App() {
   const savedSession = useMemo(() => readSession(), []);
   const [screen, setScreen] = useState(savedSession ? 'lobby' : 'home');
   const [mode, setMode] = useState('create');
+  const [gameMode, setGameMode] = useState('cards'); // 'cards' أو 'list' — بس وقت إنشاء روم جديدة
+  // القايمة المحفوظة في src/listCategories.js بتتحط هنا افتراضيًا عشان متكتبهاش من الأول كل مرة —
+  // لو عايز تعدلها بشكل دائم، عدّل DEFAULT_CATEGORIES في src/listCategories.js
+  const [categoriesText, setCategoriesText] = useState(() => DEFAULT_CATEGORIES.join('\n'));
   const [name, setName] = useState(savedSession?.name || '');
   const [roomCode, setRoomCode] = useState('');
   const [roomId, setRoomId] = useState(savedSession?.roomId || null);
@@ -85,13 +94,26 @@ export default function App() {
     return unsub;
   }, [roomId, playerId]);
 
+  function handleExit() {
+    clearSession();
+    window.location.href = window.location.pathname;
+  }
+
   async function handleCreate() {
     if (!name.trim()) return setError('اكتب اسمك الأول');
     setError('');
     setBusy(true);
     try {
       const code = makeRoomCode();
-      const pid = await createRoom(code, name.trim());
+      const categories =
+        gameMode === 'list'
+          ? categoriesText
+              .split('\n')
+              .map((c) => c.trim())
+              .filter(Boolean)
+              .slice(0, 50)
+          : null;
+      const pid = await createRoom(code, name.trim(), gameMode, categories);
       setRoomId(code);
       setPlayerId(pid);
       saveSession(code, pid, name.trim());
@@ -127,6 +149,10 @@ export default function App() {
       <HomeScreen
         mode={mode}
         setMode={setMode}
+        gameMode={gameMode}
+        setGameMode={setGameMode}
+        categoriesText={categoriesText}
+        setCategoriesText={setCategoriesText}
         name={name}
         setName={setName}
         roomCode={roomCode}
@@ -154,14 +180,34 @@ export default function App() {
         roomData={roomData}
         playerId={playerId}
         onStart={() => startGame(roomId)}
+        onExit={handleExit}
       />
     );
   }
 
-  return <GameScreen roomId={roomId} roomData={roomData} playerId={playerId} />;
+  return roomData.mode === 'list' ? (
+    <ListGameScreen roomId={roomId} roomData={roomData} playerId={playerId} onExit={handleExit} />
+  ) : (
+    <GameScreen roomId={roomId} roomData={roomData} playerId={playerId} onExit={handleExit} />
+  );
 }
 
-function HomeScreen({ mode, setMode, name, setName, roomCode, setRoomCode, error, busy, onCreate, onJoin }) {
+function HomeScreen({
+  mode,
+  setMode,
+  gameMode,
+  setGameMode,
+  categoriesText,
+  setCategoriesText,
+  name,
+  setName,
+  roomCode,
+  setRoomCode,
+  error,
+  busy,
+  onCreate,
+  onJoin,
+}) {
   return (
     <div className="screen">
       <div className="panel">
@@ -196,6 +242,38 @@ function HomeScreen({ mode, setMode, name, setName, roomCode, setRoomCode, error
           />
         )}
 
+        {mode === 'create' && (
+          <>
+            <p className="subtitle" style={{ marginBottom: 8 }}>نوع اللعبة</p>
+            <div className="tabs">
+              <div className={`tab ${gameMode === 'cards' ? 'active' : ''}`} onClick={() => setGameMode('cards')}>
+                🃏 كوتشينة
+              </div>
+              <div className={`tab ${gameMode === 'list' ? 'active' : ''}`} onClick={() => setGameMode('list')}>
+                🎲 جمعيات بالقائمة
+              </div>
+            </div>
+            {gameMode === 'list' && (
+              <>
+                <p className="copy-hint" style={{ marginTop: -4, marginBottom: 6, textAlign: 'right' }}>
+                  دي قائمتك المحفوظة — عدّل فيها هنا لو حابب (للروم دي بس)، أو عدّلها بشكل دائم من src/listCategories.js
+                </p>
+                <textarea
+                  className="field"
+                  placeholder="اكتب جمعياتك، سطر لكل واحدة (لحد 50)"
+                  value={categoriesText}
+                  onChange={(e) => setCategoriesText(e.target.value)}
+                  rows={5}
+                  style={{ resize: 'vertical', fontFamily: 'var(--font-body)' }}
+                />
+                <p className="copy-hint" style={{ marginTop: -6, marginBottom: 12 }}>
+                  أول واحد يجمع {WIN_JAM3EYAT} جمعيات موافق عليهم يكسب 🏆
+                </p>
+              </>
+            )}
+          </>
+        )}
+
         {error && <p className="error-text">{error}</p>}
 
         <button
@@ -211,7 +289,7 @@ function HomeScreen({ mode, setMode, name, setName, roomCode, setRoomCode, error
   );
 }
 
-function LobbyScreen({ roomId, roomData, playerId, onStart }) {
+function LobbyScreen({ roomId, roomData, playerId, onStart, onExit }) {
   const isHost = roomData.hostId === playerId;
   const players = roomData.playersList;
   const myName = players.find((p) => p.id === playerId)?.name || '';
@@ -228,7 +306,13 @@ function LobbyScreen({ roomId, roomData, playerId, onStart }) {
   return (
     <div className="screen">
       <div className="panel">
+        <button className="exit-btn exit-btn-inline" onClick={onExit} aria-label="خروج">
+          ✕ خروج
+        </button>
         <h1 className="title">استنى صحابك</h1>
+        <p className="copy-hint" style={{ marginTop: -10, marginBottom: 10, textAlign: 'right' }}>
+          {roomData.mode === 'list' ? '🎲 جمعيات بالقائمة' : '🃏 كوتشينة'}
+        </p>
         <p className="subtitle">ابعتلهم الكود أو اللينك يدخلوا بيه</p>
         <div className="room-code">{roomId}</div>
         <button className="btn-ghost" style={{ width: '100%', marginBottom: 4 }} onClick={copyLink}>
@@ -396,7 +480,7 @@ function Jam3eyatPanel({ players }) {
   );
 }
 
-function GameScreen({ roomId, roomData, playerId }) {
+function GameScreen({ roomId, roomData, playerId, onExit }) {
   const game = roomData.game;
   const players = roomData.playersList;
   const nameOf = (id) => players.find((p) => p.id === id)?.name || '؟';
@@ -423,6 +507,14 @@ function GameScreen({ roomId, roomData, playerId }) {
     setNamingCards(null);
     setJamName('');
   }, [game.turnIndex, phase, !!pending]);
+
+  // صوت احتفال لما أي لاعب في الروم يجمع جمعية (بيتشغل عند كل اللاعبين)
+  const totalJam3eyat = game.order.reduce((sum, id) => sum + (game.players[id].jam3eyaCount || 0), 0);
+  const prevTotalRef = React.useRef(totalJam3eyat);
+  useEffect(() => {
+    if (totalJam3eyat > prevTotalRef.current) playJam3eyaSound();
+    prevTotalRef.current = totalJam3eyat;
+  }, [totalJam3eyat]);
 
   if (roomData.status === 'finished') {
     return (
@@ -474,6 +566,7 @@ function GameScreen({ roomId, roomData, playerId }) {
   }
 
   function handleDrawPile(source) {
+    playDrawSound();
     return run(() => actionDrawPile(roomId, playerId, source));
   }
 
@@ -487,6 +580,7 @@ function GameScreen({ roomId, roomData, playerId }) {
       setPickedTargets([]);
       return;
     }
+    playDiscardSound();
     if (await run(() => actionDiscard(roomId, playerId, cardId))) setSelected([]);
   }
 
@@ -514,6 +608,7 @@ function GameScreen({ roomId, roomData, playerId }) {
 
   async function confirmTargets() {
     if (!pendingCommand) return;
+    playDiscardSound();
     const ok = await run(() =>
       actionDiscardWithTarget(roomId, playerId, pendingCommand.cardId, pickedTargets)
     );
@@ -546,6 +641,9 @@ function GameScreen({ roomId, roomData, playerId }) {
   return (
     <div className="table-wrap">
       <div className="top-bar">
+        <button className="exit-btn" onClick={onExit} aria-label="خروج">
+          ✕ خروج
+        </button>
         <div className="opponents">
           {opponents.map((id) => {
             const p = game.players[id];
@@ -767,6 +865,202 @@ function Jam3eyaVoteModal({ pending, proposerName, isProposer, voters, alreadyVo
         {isProposer ? (
           <button className="btn-ghost" style={{ width: '100%' }} onClick={onCancel}>
             الغي الجمعية
+          </button>
+        ) : alreadyVoted ? (
+          <p className="subtitle" style={{ textAlign: 'center', margin: 0 }}>
+            وافقت ✅ — مستنيين باقي اللاعبين…
+          </p>
+        ) : (
+          <div className="row">
+            <button className="btn-ghost" onClick={onReject}>
+              ارفض ❌
+            </button>
+            <button className="btn-gold" onClick={onApprove}>
+              موافق ✅
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =========================================================
+// وضع "جمعيات بالقائمة" — بدون كروت، دايرة بتدوس زرار "هات
+// جمعية" فتطلعلك واحدة عشوائية، وباقي اللاعبين بيوافقوا أو
+// يرفضوا. أول واحد يجمع WIN_JAM3EYAT يكسب.
+// =========================================================
+function ListGameScreen({ roomId, roomData, playerId, onExit }) {
+  const game = roomData.game;
+  const players = roomData.playersList;
+  const nameOf = (id) => players.find((p) => p.id === id)?.name || '؟';
+  const [error, setError] = useState('');
+  const pending = game.pending;
+
+  useEffect(() => {
+    setError('');
+  }, [!!pending]);
+
+  // صوت احتفال لما أي لاعب يجمع جمعية
+  const totalJam3eyat = game.order.reduce((sum, id) => sum + (game.players[id].jam3eyaCount || 0), 0);
+  const prevTotalRef = React.useRef(totalJam3eyat);
+  useEffect(() => {
+    if (totalJam3eyat > prevTotalRef.current) playJam3eyaSound();
+    prevTotalRef.current = totalJam3eyat;
+  }, [totalJam3eyat]);
+
+  if (roomData.status === 'finished') {
+    return (
+      <div className="screen">
+        <div className="panel winner-screen">
+          <h1 className="title">🏆 خلصت اللعبة!</h1>
+          <p className="winner-crown">👑</p>
+          <p className="winner-name">{nameOf(game.winnerId)}</p>
+          <p className="winner-tag">هو الفائز 🏆</p>
+          <p className="subtitle" style={{ fontSize: 15, color: 'var(--cream)' }}>
+            كسب اللعبة بـ {game.players[game.winnerId].completed.length} جمعيات!
+          </p>
+          <button
+            className="btn-gold"
+            style={{ width: '100%' }}
+            onClick={() => {
+              clearSession();
+              window.location.reload();
+            }}
+          >
+            لعبة جديدة
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  async function run(fn) {
+    setError('');
+    try {
+      await fn();
+      return true;
+    } catch (e) {
+      setError(e.message);
+      return false;
+    }
+  }
+
+  const me = game.players[playerId];
+  const canRequest = !pending && me.completed.length < WIN_JAM3EYAT;
+
+  let banner;
+  if (pending) {
+    banner =
+      pending.playerId === playerId
+        ? 'مستني موافقة صحابك على جمعيتك…'
+        : `${nameOf(pending.playerId)} بيجمع "${pending.category}" — وافق ولا ارفض`;
+  } else if (me.completed.length >= WIN_JAM3EYAT) {
+    banner = 'خلصت جمعياتك! استنى الباقيين 🏆';
+  } else {
+    banner = 'دوس الزرار وهات جمعية عشوائية جديدة تجمعها 🎲';
+  }
+
+  return (
+    <div className="table-wrap">
+      <div className="top-bar">
+        <button className="exit-btn" onClick={onExit} aria-label="خروج">
+          ✕ خروج
+        </button>
+        <div className="opponents">
+          {game.order.map((id) => {
+            const p = game.players[id];
+            const isPending = pending && pending.playerId === id;
+            return (
+              <div key={id} className={`player-chip ${isPending ? 'turn' : ''}`}>
+                <span className="name">
+                  {nameOf(id)}
+                  {id === playerId ? ' (إنت)' : ''}
+                </span>
+                <span className="meta">
+                  🏅 {p.completed.length}/{WIN_JAM3EYAT}
+                </span>
+                {isPending && <span className="meta">🎲 {pending.category}</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className="turn-banner">{banner}</p>
+
+      <div className="center-table">
+        <button
+          className="btn-gold"
+          style={{ fontSize: 18, padding: '20px 34px' }}
+          disabled={!canRequest}
+          onClick={() => run(() => actionRequestCategory(roomId, playerId))}
+        >
+          🎲 هات جمعية
+        </button>
+      </div>
+
+      {error && <p className="error-text" style={{ textAlign: 'center' }}>{error}</p>}
+
+      <div className="log-panel">
+        {[...game.log].slice(-6).reverse().map((l, i) => (
+          <div key={i}>{l.text}</div>
+        ))}
+      </div>
+
+      <ChatPanel roomId={roomId} playerId={playerId} myName={nameOf(playerId)} messages={roomData.messages} />
+      <Jam3eyatPanel
+        players={game.order.map((id) => ({
+          id,
+          name: nameOf(id),
+          jam3eyaCount: game.players[id].completed.length,
+          jam3eyaNames: game.players[id].completed,
+        }))}
+      />
+
+      {pending && (
+        <CategoryVoteModal
+          pending={pending}
+          proposerName={nameOf(pending.playerId)}
+          isProposer={pending.playerId === playerId}
+          voters={game.order
+            .filter((id) => id !== pending.playerId)
+            .map((id) => ({ id, name: nameOf(id), approved: !!pending.votes?.[id] }))}
+          alreadyVoted={!!pending.votes?.[playerId]}
+          error={error}
+          onApprove={() => run(() => actionVoteCategory(roomId, playerId, true))}
+          onReject={() => run(() => actionVoteCategory(roomId, playerId, false))}
+          onCancel={() => run(() => actionCancelCategory(roomId, playerId))}
+        />
+      )}
+    </div>
+  );
+}
+
+function CategoryVoteModal({ pending, proposerName, isProposer, voters, alreadyVoted, error, onApprove, onReject, onCancel }) {
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <h3>{isProposer ? `جمعيتك "${pending.category}" مستنية الموافقة` : `${proposerName} — "${pending.category}"`}</h3>
+        <p className="subtitle" style={{ marginBottom: 12 }}>
+          {isProposer
+            ? 'صحابك بيصوتوا دلوقتي. لو الكل وافق، الجمعية هتتحسب ليك.'
+            : `${proposerName} بيقول إنه جمع حاجة صح في تصنيف "${pending.category}". هو صح؟`}
+        </p>
+
+        <ul className="vote-status">
+          {voters.map((v) => (
+            <li key={v.id}>
+              {v.approved ? '✅' : '⏳'} {v.name}
+            </li>
+          ))}
+        </ul>
+
+        {error && <p className="error-text">{error}</p>}
+
+        {isProposer ? (
+          <button className="btn-ghost" style={{ width: '100%' }} onClick={onCancel}>
+            إلغي المحاولة
           </button>
         ) : alreadyVoted ? (
           <p className="subtitle" style={{ textAlign: 'center', margin: 0 }}>
