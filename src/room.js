@@ -8,10 +8,8 @@ import {
   proposeJam3eya,
   voteJam3eya,
   cancelJam3eya,
-  initListGameState,
-  requestCategory,
-  voteCategory,
-  cancelCategory,
+  startCategories,
+  requestPlayerCategory,
   WIN_JAM3EYAT,
 } from './gameLogic.js';
 import { DEFAULT_CATEGORIES } from './listCategories.js';
@@ -27,9 +25,9 @@ export function makeRoomCode() {
   return code;
 }
 
-// mode: 'cards' (اللعبة الأصلية بالكوتشينة) أو 'list' (جمعيات بالقائمة، بدون كروت)
-// categories: مطلوبة بس لو mode === 'list' — لو مبعوتتش أو فاضية بيستخدم DEFAULT_CATEGORIES
-export async function createRoom(roomId, hostName, mode = 'cards', categories = null) {
+// لعبة واحدة بس (كوتشينة) وفيها نظام الجمعيات مدمج جواها.
+// categories: قايمة الجمعيات (لحد 50) — لو مبعوتتش أو فاضية بيستخدم DEFAULT_CATEGORIES
+export async function createRoom(roomId, hostName, categories = null) {
   const ref = roomRef(roomId);
   const hostId = crypto.randomUUID();
   await setDoc(ref, {
@@ -37,8 +35,7 @@ export async function createRoom(roomId, hostName, mode = 'cards', categories = 
     hostId,
     playersList: [{ id: hostId, name: hostName }],
     game: null,
-    mode,
-    categories: mode === 'list' && categories && categories.length ? categories.slice(0, 50) : null,
+    categories: categories && categories.length ? categories.slice(0, 50) : null,
     createdAt: Date.now(),
     messages: [],
   });
@@ -83,10 +80,8 @@ export async function startGame(roomId) {
   const data = snap.data();
   const ids = data.playersList.map((p) => p.id);
   const names = Object.fromEntries(data.playersList.map((p) => [p.id, p.name]));
-  const game =
-    data.mode === 'list'
-      ? initListGameState(ids, names, data.categories && data.categories.length ? data.categories : DEFAULT_CATEGORIES)
-      : initGameState(ids, names);
+  const categories = data.categories && data.categories.length ? data.categories : DEFAULT_CATEGORIES;
+  const game = initGameState(ids, names, categories, data.hostId);
   await updateDoc(ref, { status: 'playing', game });
 }
 
@@ -121,9 +116,9 @@ export function actionDiscardWithTarget(roomId, playerId, cardId, targets) {
   return commitGameUpdate(roomId, (game) => discardCardWithTarget(game, playerId, cardId, targets));
 }
 
-// اقتراح جمعية (بيظهر للباقيين عشان يوافقوا أو يرفضوا) — مع اسم حر للجمعية
-export function actionProposeJam3eya(roomId, playerId, threeCardIds, jam3eyaName) {
-  return commitGameUpdate(roomId, (game) => proposeJam3eya(game, playerId, threeCardIds, jam3eyaName));
+// اقتراح جمعية (بيظهر للباقيين عشان يوافقوا أو يرفضوا) — الاسم بياخده أوتوماتيك من currentCategory
+export function actionProposeJam3eya(roomId, playerId, threeCardIds) {
+  return commitGameUpdate(roomId, (game) => proposeJam3eya(game, playerId, threeCardIds));
 }
 
 export function actionVoteJam3eya(roomId, voterId, approve) {
@@ -134,17 +129,14 @@ export function actionCancelJam3eya(roomId, playerId) {
   return commitGameUpdate(roomId, (game) => cancelJam3eya(game, playerId));
 }
 
-// ---- وضع "جمعيات بالقائمة" ----
-export function actionRequestCategory(roomId, playerId) {
-  return commitGameUpdate(roomId, (game) => requestCategory(game, playerId));
+// المضيف بيبدأ الجمعيات مرة واحدة في الأول — جمعية واحدة عشوائية تتحط لكل اللاعبين
+export function actionStartCategories(roomId, playerId) {
+  return commitGameUpdate(roomId, (game) => startCategories(game, playerId));
 }
 
-export function actionVoteCategory(roomId, voterId, approve) {
-  return commitGameUpdate(roomId, (game) => voteCategory(game, voterId, approve));
-}
-
-export function actionCancelCategory(roomId, playerId) {
-  return commitGameUpdate(roomId, (game) => cancelCategory(game, playerId));
+// كل لاعب بيدوس زراره الخاص لما جمعيته الحالية تتصفر — بتطلعله واحدة جديدة
+export function actionRequestPlayerCategory(roomId, playerId) {
+  return commitGameUpdate(roomId, (game) => requestPlayerCategory(game, playerId));
 }
 
 // بيبعت رسالة شات جوه الروم — كل رسالة معاها اسم اللاعب اللي بعتها
