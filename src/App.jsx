@@ -14,9 +14,8 @@ import {
   actionProposeJam3eya,
   actionVoteJam3eya,
   actionCancelJam3eya,
-  actionRequestCategory,
-  actionVoteCategory,
-  actionCancelCategory,
+  actionStartCategories,
+  actionRequestPlayerCategory,
   makeRoomCode,
   sendMessage,
 } from './room.js';
@@ -53,7 +52,6 @@ export default function App() {
   const savedSession = useMemo(() => readSession(), []);
   const [screen, setScreen] = useState(savedSession ? 'lobby' : 'home');
   const [mode, setMode] = useState('create');
-  const [gameMode, setGameMode] = useState('cards'); // 'cards' أو 'list' — بس وقت إنشاء روم جديدة
   // القايمة المحفوظة في src/listCategories.js بتتحط هنا افتراضيًا عشان متكتبهاش من الأول كل مرة —
   // لو عايز تعدلها بشكل دائم، عدّل DEFAULT_CATEGORIES في src/listCategories.js
   const [categoriesText, setCategoriesText] = useState(() => DEFAULT_CATEGORIES.join('\n'));
@@ -105,15 +103,12 @@ export default function App() {
     setBusy(true);
     try {
       const code = makeRoomCode();
-      const categories =
-        gameMode === 'list'
-          ? categoriesText
-              .split('\n')
-              .map((c) => c.trim())
-              .filter(Boolean)
-              .slice(0, 50)
-          : null;
-      const pid = await createRoom(code, name.trim(), gameMode, categories);
+      const categories = categoriesText
+        .split('\n')
+        .map((c) => c.trim())
+        .filter(Boolean)
+        .slice(0, 50);
+      const pid = await createRoom(code, name.trim(), categories);
       setRoomId(code);
       setPlayerId(pid);
       saveSession(code, pid, name.trim());
@@ -149,8 +144,6 @@ export default function App() {
       <HomeScreen
         mode={mode}
         setMode={setMode}
-        gameMode={gameMode}
-        setGameMode={setGameMode}
         categoriesText={categoriesText}
         setCategoriesText={setCategoriesText}
         name={name}
@@ -185,18 +178,12 @@ export default function App() {
     );
   }
 
-  return roomData.mode === 'list' ? (
-    <ListGameScreen roomId={roomId} roomData={roomData} playerId={playerId} onExit={handleExit} />
-  ) : (
-    <GameScreen roomId={roomId} roomData={roomData} playerId={playerId} onExit={handleExit} />
-  );
+  return <GameScreen roomId={roomId} roomData={roomData} playerId={playerId} onExit={handleExit} />;
 }
 
 function HomeScreen({
   mode,
   setMode,
-  gameMode,
-  setGameMode,
   categoriesText,
   setCategoriesText,
   name,
@@ -244,33 +231,20 @@ function HomeScreen({
 
         {mode === 'create' && (
           <>
-            <p className="subtitle" style={{ marginBottom: 8 }}>نوع اللعبة</p>
-            <div className="tabs">
-              <div className={`tab ${gameMode === 'cards' ? 'active' : ''}`} onClick={() => setGameMode('cards')}>
-                🃏 كوتشينة
-              </div>
-              <div className={`tab ${gameMode === 'list' ? 'active' : ''}`} onClick={() => setGameMode('list')}>
-                🎲 جمعيات بالقائمة
-              </div>
-            </div>
-            {gameMode === 'list' && (
-              <>
-                <p className="copy-hint" style={{ marginTop: -4, marginBottom: 6, textAlign: 'right' }}>
-                  دي قائمتك المحفوظة — عدّل فيها هنا لو حابب (للروم دي بس)، أو عدّلها بشكل دائم من src/listCategories.js
-                </p>
-                <textarea
-                  className="field"
-                  placeholder="اكتب جمعياتك، سطر لكل واحدة (لحد 50)"
-                  value={categoriesText}
-                  onChange={(e) => setCategoriesText(e.target.value)}
-                  rows={5}
-                  style={{ resize: 'vertical', fontFamily: 'var(--font-body)' }}
-                />
-                <p className="copy-hint" style={{ marginTop: -6, marginBottom: 12 }}>
-                  أول واحد يجمع {WIN_JAM3EYAT} جمعيات موافق عليهم يكسب 🏆
-                </p>
-              </>
-            )}
+            <p className="copy-hint" style={{ marginTop: -4, marginBottom: 6, textAlign: 'right' }}>
+              قائمة الجمعيات — دي قائمتك المحفوظة، عدّل فيها هنا لو حابب (للروم دي بس)، أو عدّلها بشكل دائم من src/listCategories.js
+            </p>
+            <textarea
+              className="field"
+              placeholder="اكتب جمعياتك، سطر لكل واحدة (لحد 50)"
+              value={categoriesText}
+              onChange={(e) => setCategoriesText(e.target.value)}
+              rows={5}
+              style={{ resize: 'vertical', fontFamily: 'var(--font-body)' }}
+            />
+            <p className="copy-hint" style={{ marginTop: -6, marginBottom: 12 }}>
+              المضيف بيدوس "ابدأ الجمعيات" في أول اللعبة، وأول واحد يجمع {WIN_JAM3EYAT} جمعيات موافق عليهم يكسب 🏆
+            </p>
           </>
         )}
 
@@ -311,7 +285,7 @@ function LobbyScreen({ roomId, roomData, playerId, onStart, onExit }) {
         </button>
         <h1 className="title">استنى صحابك</h1>
         <p className="copy-hint" style={{ marginTop: -10, marginBottom: 10, textAlign: 'right' }}>
-          {roomData.mode === 'list' ? '🎲 جمعيات بالقائمة' : '🃏 كوتشينة'}
+          🃏 جمعيات بالقائمة 🎲
         </p>
         <p className="subtitle">ابعتلهم الكود أو اللينك يدخلوا بيه</p>
         <div className="room-code">{roomId}</div>
@@ -346,9 +320,14 @@ function LobbyScreen({ roomId, roomData, playerId, onStart, onExit }) {
   );
 }
 
-function ChatPanel({ roomId, playerId, myName, messages }) {
+function ChatPanel({ roomId, playerId, myName, messages, open: openProp, onOpenChange }) {
   const list = messages || [];
-  const [open, setOpen] = useState(false);
+  // لو الشاشة اللي بتستخدمنا مبعتتش open/onOpenChange (زي اللوبي) بنمسك حالة الفتح جوانا لوحدنا،
+  // لو بعتتهم (زي شاشة اللعبة، عشان نمنع تراكب البانل ده مع بانل الجمعيات) بنبقى "controlled"
+  const [openState, setOpenState] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openState;
+  const setOpen = controlled ? onOpenChange : setOpenState;
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   // بنتتبع "وقت" آخر رسالة اتقرت (مش عدد الرسايل)، عشان القايمة بتتقص لآخر 100
@@ -369,7 +348,7 @@ function ChatPanel({ roomId, playerId, myName, messages }) {
 
   function toggleOpen() {
     if (!open && list.length) setLastReadAt(list[list.length - 1].at); // فتحنا الشات = قرينا كل الرسايل
-    setOpen((prev) => !prev);
+    setOpen(!open);
   }
 
   async function handleSend() {
@@ -436,13 +415,16 @@ function ChatPanel({ roomId, playerId, myName, messages }) {
   );
 }
 
-function Jam3eyatPanel({ players }) {
-  const [open, setOpen] = useState(false);
+function Jam3eyatPanel({ players, open: openProp, onOpenChange }) {
+  const [openState, setOpenState] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openState;
+  const setOpen = controlled ? onOpenChange : setOpenState;
   const total = players.reduce((sum, p) => sum + (p.jam3eyaCount || 0), 0);
 
   return (
     <>
-      <button className="jam-fab" onClick={() => setOpen((v) => !v)} aria-label="الجمعيات">
+      <button className="jam-fab" onClick={() => setOpen(!open)} aria-label="الجمعيات">
         🏆
         {total > 0 && <span className="jam-fab-badge">{total > 99 ? '99+' : total}</span>}
       </button>
@@ -484,6 +466,7 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
   const game = roomData.game;
   const players = roomData.playersList;
   const nameOf = (id) => players.find((p) => p.id === id)?.name || '؟';
+  const isHost = roomData.hostId === playerId;
 
   const me = game.players[playerId];
   const currentId = game.order[game.turnIndex];
@@ -496,16 +479,14 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
   const [selected, setSelected] = useState([]);
   const [pendingCommand, setPendingCommand] = useState(null); // {cardId, needCount}
   const [pickedTargets, setPickedTargets] = useState([]);
-  const [namingCards, setNamingCards] = useState(null); // الكروت التلاتة وهي مستنية اسم الجمعية
-  const [jamName, setJamName] = useState('');
   const [error, setError] = useState('');
+  // بانل الشات والجمعيات بيتفتحوا واحد لوحده بس — عشان محدش يتراكب فوق التاني
+  const [activePanel, setActivePanel] = useState(null); // null | 'chat' | 'jam'
 
   // امسح الاختيار لما الدور أو المرحلة أو حالة الجمعية تتغير
   useEffect(() => {
     setSelected([]);
     setError('');
-    setNamingCards(null);
-    setJamName('');
   }, [game.turnIndex, phase, !!pending]);
 
   // صوت احتفال لما أي لاعب في الروم يجمع جمعية (بيتشغل عند كل اللاعبين)
@@ -584,26 +565,12 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
     if (await run(() => actionDiscard(roomId, playerId, cardId))) setSelected([]);
   }
 
+  // مفيش اسم حر بيتكتب — الجمعية بتتنزل أوتوماتيك باسم currentCategory بتاع اللاعب
   async function handleJam3eya() {
-    if (selected.length !== 3) return;
+    if (selected.length !== 3 || !me.currentCategory) return;
     setError('');
-    setJamName('');
-    setNamingCards(selected);
-  }
-
-  async function confirmJam3eyaName() {
-    if (!namingCards) return;
-    const ok = await run(() => actionProposeJam3eya(roomId, playerId, namingCards, jamName));
-    if (ok) {
-      setSelected([]);
-      setNamingCards(null);
-      setJamName('');
-    }
-  }
-
-  function cancelJam3eyaName() {
-    setNamingCards(null);
-    setJamName('');
+    const ok = await run(() => actionProposeJam3eya(roomId, playerId, selected));
+    if (ok) setSelected([]);
   }
 
   async function confirmTargets() {
@@ -621,14 +588,19 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
 
   const opponents = game.order.filter((id) => id !== playerId);
   const canPickPile = myTurn && phase === 'draw' && !pending && !pendingCommand;
-  const canPropose = myTurn && phase === 'draw' && !pending && !game.jam3eyaTried;
+  const canPropose = myTurn && phase === 'draw' && !pending && !game.jam3eyaTried && !!me.currentCategory;
+  const canRequestOwnCategory = game.categoriesStarted && !me.currentCategory;
 
   let banner;
-  if (pending) {
+  if (!game.categoriesStarted) {
+    banner = isHost ? 'دوس "ابدأ الجمعيات" عشان تبدأ اللعبة 🎲' : 'مستنيين المضيف يبدأ الجمعيات…';
+  } else if (pending) {
     banner =
       pending.playerId === playerId
         ? 'مستني موافقة اللاعبين على جمعيتك…'
         : `${nameOf(pending.playerId)} عايز ينزل جمعية — وافق ولا ارفض`;
+  } else if (canRequestOwnCategory) {
+    banner = 'خلصت جمعيتك! دوس "هات جمعية" وهات واحدة جديدة 🎲';
   } else if (myTurn) {
     banner =
       phase === 'draw'
@@ -654,6 +626,7 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
                 <span className="meta">
                   🃏 {p.hand.length} · 🏅 {p.jam3eyaCount}
                 </span>
+                {p.currentCategory && <span className="meta">🎲 {p.currentCategory}</span>}
               </div>
             );
           })}
@@ -661,6 +634,20 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
       </div>
 
       <p className="turn-banner">{banner}</p>
+
+      {!game.categoriesStarted && (
+        <div className="row" style={{ marginBottom: 10 }}>
+          {isHost ? (
+            <button className="btn-gold" style={{ width: '100%' }} onClick={() => run(() => actionStartCategories(roomId, playerId))}>
+              🎲 ابدأ الجمعيات
+            </button>
+          ) : (
+            <p className="subtitle" style={{ textAlign: 'center', width: '100%' }}>
+              مستنيين المضيف يبدأ الجمعيات…
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="center-table">
         <div className="pile">
@@ -712,9 +699,15 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
           >
             جمعية ({selected.length}/3)
           </button>
+          {canRequestOwnCategory && (
+            <button className="btn-gold" onClick={() => run(() => actionRequestPlayerCategory(roomId, playerId))}>
+              🎲 هات جمعية
+            </button>
+          )}
         </div>
         <p className="copy-hint">
-          🏅 جمعياتك: {me.jam3eyaCount} —{' '}
+          🏅 جمعياتك: {me.jam3eyaCount}
+          {me.currentCategory ? ` — 🎲 بتجمع: "${me.currentCategory}"` : ''} —{' '}
           {phase === 'draw'
             ? 'اسحب ورقة، أو اختار 3 ورقات وعرضهم كجمعية على صحابك'
             : 'اختار ورقة واحدة وارمِها'}
@@ -727,8 +720,19 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
         ))}
       </div>
 
-      <ChatPanel roomId={roomId} playerId={playerId} myName={nameOf(playerId)} messages={roomData.messages} />
-      <Jam3eyatPanel players={game.order.map((id) => ({ id, name: nameOf(id), ...game.players[id] }))} />
+      <ChatPanel
+        roomId={roomId}
+        playerId={playerId}
+        myName={nameOf(playerId)}
+        messages={roomData.messages}
+        open={activePanel === 'chat'}
+        onOpenChange={(v) => setActivePanel(v ? 'chat' : null)}
+      />
+      <Jam3eyatPanel
+        players={game.order.map((id) => ({ id, name: nameOf(id), ...game.players[id] }))}
+        open={activePanel === 'jam'}
+        onOpenChange={(v) => setActivePanel(v ? 'jam' : null)}
+      />
 
       {pendingCommand && (
         <TargetModal
@@ -743,39 +747,6 @@ function GameScreen({ roomId, roomData, playerId, onExit }) {
           }}
           onConfirm={confirmTargets}
         />
-      )}
-
-      {namingCards && (
-        <div className="modal-backdrop">
-          <div className="modal">
-            <h3>اسم الجمعية 🎬</h3>
-            <p className="subtitle" style={{ marginBottom: 14 }}>
-              اكتب اسم للجمعية دي — هيظهر للاعبين التانيين مع الـ 3 كروت
-            </p>
-            <input
-              className="field"
-              placeholder="مثلاً: جمعية الزعيم"
-              value={jamName}
-              onChange={(e) => setJamName(e.target.value)}
-              maxLength={40}
-              autoFocus
-            />
-            <div className="vote-cards">
-              {namingCards.map((cid) => (
-                <Card key={cid} card={getCard(cid)} />
-              ))}
-            </div>
-            {error && <p className="error-text">{error}</p>}
-            <div className="row" style={{ marginTop: 10 }}>
-              <button className="btn-ghost" onClick={cancelJam3eyaName}>
-                إلغاء
-              </button>
-              <button className="btn-gold" onClick={confirmJam3eyaName}>
-                نزّل الجمعية
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {pending && (
@@ -885,198 +856,3 @@ function Jam3eyaVoteModal({ pending, proposerName, isProposer, voters, alreadyVo
   );
 }
 
-// =========================================================
-// وضع "جمعيات بالقائمة" — بدون كروت، دايرة بتدوس زرار "هات
-// جمعية" فتطلعلك واحدة عشوائية، وباقي اللاعبين بيوافقوا أو
-// يرفضوا. أول واحد يجمع WIN_JAM3EYAT يكسب.
-// =========================================================
-function ListGameScreen({ roomId, roomData, playerId, onExit }) {
-  const game = roomData.game;
-  const players = roomData.playersList;
-  const nameOf = (id) => players.find((p) => p.id === id)?.name || '؟';
-  const [error, setError] = useState('');
-  const pending = game.pending;
-
-  useEffect(() => {
-    setError('');
-  }, [!!pending]);
-
-  // صوت احتفال لما أي لاعب يجمع جمعية
-  const totalJam3eyat = game.order.reduce((sum, id) => sum + (game.players[id].jam3eyaCount || 0), 0);
-  const prevTotalRef = React.useRef(totalJam3eyat);
-  useEffect(() => {
-    if (totalJam3eyat > prevTotalRef.current) playJam3eyaSound();
-    prevTotalRef.current = totalJam3eyat;
-  }, [totalJam3eyat]);
-
-  if (roomData.status === 'finished') {
-    return (
-      <div className="screen">
-        <div className="panel winner-screen">
-          <h1 className="title">🏆 خلصت اللعبة!</h1>
-          <p className="winner-crown">👑</p>
-          <p className="winner-name">{nameOf(game.winnerId)}</p>
-          <p className="winner-tag">هو الفائز 🏆</p>
-          <p className="subtitle" style={{ fontSize: 15, color: 'var(--cream)' }}>
-            كسب اللعبة بـ {game.players[game.winnerId].completed.length} جمعيات!
-          </p>
-          <button
-            className="btn-gold"
-            style={{ width: '100%' }}
-            onClick={() => {
-              clearSession();
-              window.location.reload();
-            }}
-          >
-            لعبة جديدة
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  async function run(fn) {
-    setError('');
-    try {
-      await fn();
-      return true;
-    } catch (e) {
-      setError(e.message);
-      return false;
-    }
-  }
-
-  const me = game.players[playerId];
-  const canRequest = !pending && me.completed.length < WIN_JAM3EYAT;
-
-  let banner;
-  if (pending) {
-    banner =
-      pending.playerId === playerId
-        ? 'مستني موافقة صحابك على جمعيتك…'
-        : `${nameOf(pending.playerId)} بيجمع "${pending.category}" — وافق ولا ارفض`;
-  } else if (me.completed.length >= WIN_JAM3EYAT) {
-    banner = 'خلصت جمعياتك! استنى الباقيين 🏆';
-  } else {
-    banner = 'دوس الزرار وهات جمعية عشوائية جديدة تجمعها 🎲';
-  }
-
-  return (
-    <div className="table-wrap">
-      <div className="top-bar">
-        <button className="exit-btn" onClick={onExit} aria-label="خروج">
-          ✕ خروج
-        </button>
-        <div className="opponents">
-          {game.order.map((id) => {
-            const p = game.players[id];
-            const isPending = pending && pending.playerId === id;
-            return (
-              <div key={id} className={`player-chip ${isPending ? 'turn' : ''}`}>
-                <span className="name">
-                  {nameOf(id)}
-                  {id === playerId ? ' (إنت)' : ''}
-                </span>
-                <span className="meta">
-                  🏅 {p.completed.length}/{WIN_JAM3EYAT}
-                </span>
-                {isPending && <span className="meta">🎲 {pending.category}</span>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <p className="turn-banner">{banner}</p>
-
-      <div className="center-table">
-        <button
-          className="btn-gold"
-          style={{ fontSize: 18, padding: '20px 34px' }}
-          disabled={!canRequest}
-          onClick={() => run(() => actionRequestCategory(roomId, playerId))}
-        >
-          🎲 هات جمعية
-        </button>
-      </div>
-
-      {error && <p className="error-text" style={{ textAlign: 'center' }}>{error}</p>}
-
-      <div className="log-panel">
-        {[...game.log].slice(-6).reverse().map((l, i) => (
-          <div key={i}>{l.text}</div>
-        ))}
-      </div>
-
-      <ChatPanel roomId={roomId} playerId={playerId} myName={nameOf(playerId)} messages={roomData.messages} />
-      <Jam3eyatPanel
-        players={game.order.map((id) => ({
-          id,
-          name: nameOf(id),
-          jam3eyaCount: game.players[id].completed.length,
-          jam3eyaNames: game.players[id].completed,
-        }))}
-      />
-
-      {pending && (
-        <CategoryVoteModal
-          pending={pending}
-          proposerName={nameOf(pending.playerId)}
-          isProposer={pending.playerId === playerId}
-          voters={game.order
-            .filter((id) => id !== pending.playerId)
-            .map((id) => ({ id, name: nameOf(id), approved: !!pending.votes?.[id] }))}
-          alreadyVoted={!!pending.votes?.[playerId]}
-          error={error}
-          onApprove={() => run(() => actionVoteCategory(roomId, playerId, true))}
-          onReject={() => run(() => actionVoteCategory(roomId, playerId, false))}
-          onCancel={() => run(() => actionCancelCategory(roomId, playerId))}
-        />
-      )}
-    </div>
-  );
-}
-
-function CategoryVoteModal({ pending, proposerName, isProposer, voters, alreadyVoted, error, onApprove, onReject, onCancel }) {
-  return (
-    <div className="modal-backdrop">
-      <div className="modal">
-        <h3>{isProposer ? `جمعيتك "${pending.category}" مستنية الموافقة` : `${proposerName} — "${pending.category}"`}</h3>
-        <p className="subtitle" style={{ marginBottom: 12 }}>
-          {isProposer
-            ? 'صحابك بيصوتوا دلوقتي. لو الكل وافق، الجمعية هتتحسب ليك.'
-            : `${proposerName} بيقول إنه جمع حاجة صح في تصنيف "${pending.category}". هو صح؟`}
-        </p>
-
-        <ul className="vote-status">
-          {voters.map((v) => (
-            <li key={v.id}>
-              {v.approved ? '✅' : '⏳'} {v.name}
-            </li>
-          ))}
-        </ul>
-
-        {error && <p className="error-text">{error}</p>}
-
-        {isProposer ? (
-          <button className="btn-ghost" style={{ width: '100%' }} onClick={onCancel}>
-            إلغي المحاولة
-          </button>
-        ) : alreadyVoted ? (
-          <p className="subtitle" style={{ textAlign: 'center', margin: 0 }}>
-            وافقت ✅ — مستنيين باقي اللاعبين…
-          </p>
-        ) : (
-          <div className="row">
-            <button className="btn-ghost" onClick={onReject}>
-              ارفض ❌
-            </button>
-            <button className="btn-gold" onClick={onApprove}>
-              موافق ✅
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
