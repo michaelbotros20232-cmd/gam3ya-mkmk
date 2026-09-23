@@ -112,8 +112,8 @@ export function actionDiscard(roomId, playerId, cardId) {
   return commitGameUpdate(roomId, (game) => discardCard(game, playerId, cardId));
 }
 
-export function actionDiscardWithTarget(roomId, playerId, cardId, targets) {
-  return commitGameUpdate(roomId, (game) => discardCardWithTarget(game, playerId, cardId, targets));
+export function actionDiscardWithTarget(roomId, playerId, cardId, targets, myCardId) {
+  return commitGameUpdate(roomId, (game) => discardCardWithTarget(game, playerId, cardId, targets, myCardId));
 }
 
 // اقتراح جمعية (بيظهر للباقيين عشان يوافقوا أو يرفضوا) — الاسم بياخده أوتوماتيك من currentCategory
