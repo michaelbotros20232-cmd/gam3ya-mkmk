@@ -8,8 +8,13 @@ import {
   proposeJam3eya,
   voteJam3eya,
   cancelJam3eya,
+  initListGameState,
+  requestCategory,
+  voteCategory,
+  cancelCategory,
   WIN_JAM3EYAT,
 } from './gameLogic.js';
+import { DEFAULT_CATEGORIES } from './listCategories.js';
 
 function roomRef(roomId) {
   return doc(db, 'rooms', roomId.toUpperCase());
@@ -22,7 +27,9 @@ export function makeRoomCode() {
   return code;
 }
 
-export async function createRoom(roomId, hostName) {
+// mode: 'cards' (اللعبة الأصلية بالكوتشينة) أو 'list' (جمعيات بالقائمة، بدون كروت)
+// categories: مطلوبة بس لو mode === 'list' — لو مبعوتتش أو فاضية بيستخدم DEFAULT_CATEGORIES
+export async function createRoom(roomId, hostName, mode = 'cards', categories = null) {
   const ref = roomRef(roomId);
   const hostId = crypto.randomUUID();
   await setDoc(ref, {
@@ -30,6 +37,8 @@ export async function createRoom(roomId, hostName) {
     hostId,
     playersList: [{ id: hostId, name: hostName }],
     game: null,
+    mode,
+    categories: mode === 'list' && categories && categories.length ? categories.slice(0, 50) : null,
     createdAt: Date.now(),
     messages: [],
   });
@@ -74,7 +83,10 @@ export async function startGame(roomId) {
   const data = snap.data();
   const ids = data.playersList.map((p) => p.id);
   const names = Object.fromEntries(data.playersList.map((p) => [p.id, p.name]));
-  const game = initGameState(ids, names);
+  const game =
+    data.mode === 'list'
+      ? initListGameState(ids, names, data.categories && data.categories.length ? data.categories : DEFAULT_CATEGORIES)
+      : initGameState(ids, names);
   await updateDoc(ref, { status: 'playing', game });
 }
 
@@ -120,6 +132,19 @@ export function actionVoteJam3eya(roomId, voterId, approve) {
 
 export function actionCancelJam3eya(roomId, playerId) {
   return commitGameUpdate(roomId, (game) => cancelJam3eya(game, playerId));
+}
+
+// ---- وضع "جمعيات بالقائمة" ----
+export function actionRequestCategory(roomId, playerId) {
+  return commitGameUpdate(roomId, (game) => requestCategory(game, playerId));
+}
+
+export function actionVoteCategory(roomId, voterId, approve) {
+  return commitGameUpdate(roomId, (game) => voteCategory(game, voterId, approve));
+}
+
+export function actionCancelCategory(roomId, playerId) {
+  return commitGameUpdate(roomId, (game) => cancelCategory(game, playerId));
 }
 
 // بيبعت رسالة شات جوه الروم — كل رسالة معاها اسم اللاعب اللي بعتها
