@@ -145,16 +145,8 @@ function applyAutoCommand(state, actorId, cardKey) {
   const order = state.order;
   const actorIdx = order.indexOf(actorId);
 
-  if (cardKey === 'haga_ma3akom') {
-    const targetId = order[nextIndex(state, actorIdx)];
-    const target = state.players[targetId];
-    if (target.hand.length > 0) {
-      const idx = Math.floor(Math.random() * target.hand.length);
-      const [taken] = target.hand.splice(idx, 1);
-      state.players[actorId].hand.push(taken);
-      pushLog(state, `${nm(state, actorId)} لعب "هاجي معاكو كدا" واخد كارت من ${nm(state, targetId)}`);
-    }
-  } else if (cardKey === 'bas_ya_baba') {
+  // "هاجي معاكو كدا": من غير أي أكشن خالص — بيتحسب بس لو نزل ضمن الـ3 كروت بتوع جمعية
+  if (cardKey === 'bas_ya_baba') {
     const targetId = order[nextIndex(state, actorIdx)];
     state.skipPlayerId = targetId;
     pushLog(state, `${nm(state, actorId)} لعب "بس يا بابا"، ${nm(state, targetId)} هيتعمله سكيب`);
